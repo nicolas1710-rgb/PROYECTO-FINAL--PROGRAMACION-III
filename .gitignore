@@ -1,0 +1,10 @@
+# Archivos de compilación y dependencias de Elixir / OTP
+/_build/
+/deps/
+/.elixir_ls/
+/datos_prueba*/
+/*.ez
+*.beam
+.DS_Store
+*.tmp
+

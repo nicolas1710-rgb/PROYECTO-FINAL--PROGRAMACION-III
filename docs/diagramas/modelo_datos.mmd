@@ -34,6 +34,7 @@ classDiagram
         +String id
         +String codigo_zona
         +String tipo_recurso
+        +String descripcion
         +Integer cantidad_solicitada
         +Integer cantidad_asignada
         +Atom prioridad
@@ -45,6 +46,7 @@ classDiagram
 
     class Recurso {
         +String id
+        +String nombre
         +String tipo
         +String unidad_medida
         +Integer cantidad_total
@@ -106,6 +108,8 @@ classDiagram
         +Integer capacidad_maxima
         +String fecha_registro
         +MapSet personas_alojadas
+        +Map recursos_asignados
+        +List necesidades_asociadas
     }
 
     class RegistroActividad {
@@ -125,5 +129,6 @@ classDiagram
     Persona "1" <-- "many" Mensaje : recibe
     Zona "1" <-- "many" Albergue : ubicado_en
     Albergue "1" o-- "many" Persona : aloja_documentos
+    Albergue "1" ..> "many" Recurso : vincula_recursos_asignados
+    Albergue "1" ..> "many" Necesidad : vincula_necesidades_asociadas
     Zona "1" <-- "many" ReporteMascota : perdida_o_hallada_en
-

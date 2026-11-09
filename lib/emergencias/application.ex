@@ -43,7 +43,7 @@ defmodule Emergencias.Application do
       {Task.Supervisor, name: Emergencias.TaskSupervisor}
     ]
 
-    opciones = [strategy: :one_for_one, max_restarts: 100, max_seconds: 5, name: Emergencias.SupervisorRaiz]
+    opciones = [strategy: :one_for_one, max_restarts: 3, max_seconds: 5, name: Emergencias.SupervisorRaiz]
 
     case Supervisor.start_link(hijos, opciones) do
       {:ok, pid} ->

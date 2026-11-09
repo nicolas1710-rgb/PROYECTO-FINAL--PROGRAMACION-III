@@ -2,9 +2,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
   @moduledoc """
   GenServer para la administración de necesidades humanitarias y control de transiciones de estado.
   Evita doble cierre y serializa modificaciones de necesidades.
+  Implementa el puerto de salida PuertoSalidaNecesidades.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaNecesidades
 
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.Necesidad
@@ -51,6 +54,19 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
     GenServer.call(__MODULE__, {:registrar, params, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: registrar necesidad."
+  @spec registrar(map(), String.t()) :: {:ok, Necesidad.t()} | {:error, atom()}
+  def registrar(params, usuario), do: registrar_necesidad(params, usuario)
+
+  @impl true
+  @doc "Implementación del puerto: consultar necesidad por identificador."
+  @spec consultar(String.t()) :: {:ok, Necesidad.t()} | {:error, atom()}
+  def consultar(id_necesidad) do
+    GenServer.call(__MODULE__, {:consultar, id_necesidad})
+  end
+
+  @impl true
   @doc """
   Actualizar el estado de una necesidad previa validación de grafo y cierre.
   """
@@ -60,6 +76,14 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
     GenServer.call(__MODULE__, {:actualizar, id_necesidad, nuevo_estado, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: asignar suministros a una necesidad."
+  @spec asignar_suministro(String.t(), pos_integer(), String.t()) ::
+          {:ok, Necesidad.t()} | {:error, atom()}
+  def asignar_suministro(id_necesidad, cantidad, usuario) do
+    GenServer.call(__MODULE__, {:asignar_suministro, id_necesidad, cantidad, usuario})
+  end
+
   @doc """
   Listar necesidades aplicando filtros.
   """
@@ -67,6 +91,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
   def listar_necesidades(filtros \\ []) do
     GenServer.call(__MODULE__, {:listar, filtros})
   end
+
+  @impl true
+  @doc "Implementación del puerto: listar necesidades."
+  @spec listar(keyword()) :: {:ok, list(Necesidad.t())}
+  def listar(filtros \\ []), do: listar_necesidades(filtros)
 
   @doc """
   Recargar necesidades desde persistencia en disco.
@@ -94,8 +123,18 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
   end
 
   @impl true
+  def handle_call({:consultar, id_necesidad}, _from, estado) do
+    ejecutar_consulta(id_necesidad, estado)
+  end
+
+  @impl true
   def handle_call({:actualizar, id_necesidad, nuevo_estado, usuario}, _from, estado) do
     ejecutar_actualizacion(id_necesidad, nuevo_estado, usuario, estado)
+  end
+
+  @impl true
+  def handle_call({:asignar_suministro, id_necesidad, cantidad, usuario}, _from, estado) do
+    ejecutar_asignacion_suministro(id_necesidad, cantidad, usuario, estado)
   end
 
   @impl true
@@ -130,10 +169,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
           codigo_zona: validados.codigo_zona,
           tipo_recurso: validados.tipo_recurso,
           cantidad_solicitada: validados.cantidad_solicitada,
+          cantidad_asignada: 0,
           prioridad: validados.prioridad,
           estado: :pendiente,
           fecha_registro: fecha,
-          usuario_reporta: usuario
+          usuario_reporta: usuario,
+          descripcion: Map.get(validados, :descripcion, "")
         })
 
       MotorPersistencia.guardar(:necesidades, nueva_nec)
@@ -167,6 +208,72 @@ defmodule Emergencias.Infraestructura.Procesos.GestorNecesidades do
 
           {:error, razon} ->
             {:reply, {:error, razon}, estado}
+        end
+    end
+  end
+
+  @doc """
+  Ejecutar la consulta de una necesidad por su identificador.
+  """
+  @spec ejecutar_consulta(String.t(), map()) ::
+          {:reply, {:ok, Necesidad.t()} | {:error, :necesidad_no_encontrada}, map()}
+  def ejecutar_consulta(id_necesidad, estado) do
+    clave = String.upcase(id_necesidad)
+
+    case Map.get(estado.necesidades, clave) do
+      nil -> {:reply, {:error, :necesidad_no_encontrada}, estado}
+      %Necesidad{} = nec -> {:reply, {:ok, nec}, estado}
+    end
+  end
+
+  @doc """
+  Ejecutar la asignación de suministros a una necesidad actualizando cantidad asignada y estado.
+  """
+  @spec ejecutar_asignacion_suministro(String.t(), pos_integer(), String.t(), map()) ::
+          {:reply, {:ok, Necesidad.t()} | {:error, atom()}, map()}
+  def ejecutar_asignacion_suministro(id_necesidad, cantidad, usuario, estado) do
+    clave = String.upcase(id_necesidad)
+
+    case Map.get(estado.necesidades, clave) do
+      nil ->
+        {:reply, {:error, :necesidad_no_encontrada}, estado}
+
+      %Necesidad{} = nec ->
+        cond do
+          nec.estado == :atendida ->
+            {:reply, {:error, :necesidad_ya_atendida}, estado}
+
+          nec.estado == :cancelada ->
+            {:reply, {:error, :necesidad_cancelada}, estado}
+
+          true ->
+            pendiente = nec.cantidad_solicitada - nec.cantidad_asignada
+
+            if cantidad > pendiente do
+              {:reply, {:error, :cantidad_excede_necesidad}, estado}
+            else
+              nueva_asignada = nec.cantidad_asignada + cantidad
+              nuevo_estado = if nueva_asignada >= nec.cantidad_solicitada, do: :atendida, else: :asignada
+              fecha = Reloj.obtener_fecha_actual()
+
+              evento = %{
+                fecha: fecha,
+                estado_anterior: nec.estado,
+                estado_nuevo: nuevo_estado,
+                usuario: usuario
+              }
+
+              actualizada = %{
+                nec
+                | cantidad_asignada: nueva_asignada,
+                  estado: nuevo_estado,
+                  historial: [evento | nec.historial]
+              }
+
+              MotorPersistencia.guardar(:necesidades, actualizada)
+              nuevas = Map.put(estado.necesidades, clave, actualizada)
+              {:reply, {:ok, actualizada}, %{estado | necesidades: nuevas}}
+            end
         end
     end
   end

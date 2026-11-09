@@ -1,10 +1,12 @@
 defmodule Emergencias.Dominio.Modelos.Recurso do
   @moduledoc """
-  Representa un lote de suministros o recursos disponibles en una zona.
+  Representa un lote de suministros o recursos disponibles en un centro de apoyo o zona.
+  Incluye identificación propia, nombre, categoría, unidad y centro de ubicación.
   """
 
   @enforce_keys [
     :id,
+    :nombre,
     :tipo,
     :unidad_medida,
     :cantidad_total,
@@ -15,6 +17,7 @@ defmodule Emergencias.Dominio.Modelos.Recurso do
 
   defstruct [
     :id,
+    :nombre,
     :tipo,
     :unidad_medida,
     :cantidad_total,
@@ -26,6 +29,7 @@ defmodule Emergencias.Dominio.Modelos.Recurso do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          nombre: String.t(),
           tipo: String.t(),
           unidad_medida: String.t(),
           cantidad_total: non_neg_integer(),
@@ -43,11 +47,14 @@ defmodule Emergencias.Dominio.Modelos.Recurso do
     total = Map.fetch!(atributos, :cantidad_total)
     disponible = Map.get(atributos, :cantidad_disponible, total)
     reservada = Map.get(atributos, :cantidad_reservada, 0)
+    tipo = Map.fetch!(atributos, :tipo)
+    nombre = Map.get(atributos, :nombre, tipo)
 
     {:ok,
      %__MODULE__{
        id: Map.fetch!(atributos, :id),
-       tipo: Map.fetch!(atributos, :tipo),
+       nombre: nombre,
+       tipo: tipo,
        unidad_medida: Map.fetch!(atributos, :unidad_medida),
        cantidad_total: total,
        cantidad_disponible: disponible,

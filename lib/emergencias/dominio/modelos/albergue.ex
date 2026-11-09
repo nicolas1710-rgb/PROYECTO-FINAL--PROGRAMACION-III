@@ -1,11 +1,20 @@
 defmodule Emergencias.Dominio.Modelos.Albergue do
   @moduledoc """
   Representa un albergue temporal para personas damnificadas.
-  Utiliza MapSet para garantizar unicidad y acceso eficiente de las personas alojadas.
+  Asocia ocupantes únicos mediante MapSet, así como suministros asignados y necesidades vinculadas.
   """
 
   @enforce_keys [:id, :nombre, :codigo_zona, :capacidad_maxima, :fecha_registro]
-  defstruct [:id, :nombre, :codigo_zona, :capacidad_maxima, :fecha_registro, personas_alojadas: MapSet.new()]
+  defstruct [
+    :id,
+    :nombre,
+    :codigo_zona,
+    :capacidad_maxima,
+    :fecha_registro,
+    personas_alojadas: MapSet.new(),
+    recursos_asignados: %{},
+    necesidades_asociadas: []
+  ]
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -13,11 +22,13 @@ defmodule Emergencias.Dominio.Modelos.Albergue do
           codigo_zona: String.t(),
           capacidad_maxima: pos_integer(),
           fecha_registro: String.t(),
-          personas_alojadas: MapSet.t(String.t())
+          personas_alojadas: MapSet.t(String.t()),
+          recursos_asignados: map(),
+          necesidades_asociadas: list(String.t())
         }
 
   @doc """
-  Construir un albergue con capacidad y conjunto inicial de ocupantes.
+  Construir un albergue con capacidad, ocupantes y suministros asociados.
   """
   @spec construir(map()) :: {:ok, t()} | {:error, atom()}
   def construir(atributos) when is_map(atributos) do
@@ -34,7 +45,9 @@ defmodule Emergencias.Dominio.Modelos.Albergue do
        codigo_zona: Map.fetch!(atributos, :codigo_zona),
        capacidad_maxima: Map.fetch!(atributos, :capacidad_maxima),
        fecha_registro: Map.fetch!(atributos, :fecha_registro),
-       personas_alojadas: personas
+       personas_alojadas: personas,
+       recursos_asignados: Map.get(atributos, :recursos_asignados, %{}),
+       necesidades_asociadas: Map.get(atributos, :necesidades_asociadas, [])
      }}
   rescue
     KeyError -> {:error, :atributos_incompletos}

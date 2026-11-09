@@ -1,6 +1,7 @@
 defmodule Emergencias.Dominio.Modelos.Necesidad do
   @moduledoc """
   Representa una necesidad humanitaria reportada en una zona afectada.
+  Rastrea cantidad solicitada, cantidad asignada y descripción de la urgencia.
   """
 
   @enforce_keys [
@@ -23,6 +24,7 @@ defmodule Emergencias.Dominio.Modelos.Necesidad do
     :estado,
     :fecha_registro,
     :usuario_reporta,
+    descripcion: "",
     cantidad_asignada: 0,
     historial: []
   ]
@@ -47,6 +49,7 @@ defmodule Emergencias.Dominio.Modelos.Necesidad do
           estado: estado(),
           fecha_registro: String.t(),
           usuario_reporta: String.t(),
+          descripcion: String.t(),
           historial: [evento_historial()]
         }
 
@@ -66,6 +69,7 @@ defmodule Emergencias.Dominio.Modelos.Necesidad do
        estado: Map.fetch!(atributos, :estado),
        fecha_registro: Map.fetch!(atributos, :fecha_registro),
        usuario_reporta: Map.fetch!(atributos, :usuario_reporta),
+       descripcion: Map.get(atributos, :descripcion, ""),
        historial: Map.get(atributos, :historial, [])
      }}
   rescue

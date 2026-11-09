@@ -56,17 +56,17 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia do
   @doc """
   Guardar una lista completa de entidades o actualizar una entidad.
   """
-  @spec guardar(atom(), list(struct()) | struct()) :: :ok
+  @spec guardar(atom(), list(struct()) | struct()) :: :ok | {:error, atom()}
   def guardar(entidad, registros) do
     GenServer.call(__MODULE__, {:guardar, entidad, registros})
   end
 
   @doc """
-  Anexar un registro histórico de forma append-only.
+  Anexar un registro histórico de forma append-only verificando escritura segura.
   """
-  @spec anexar(atom(), struct()) :: :ok
+  @spec anexar(atom(), struct()) :: :ok | {:error, atom()}
   def anexar(entidad, registro) do
-    GenServer.cast(__MODULE__, {:anexar, entidad, registro})
+    GenServer.call(__MODULE__, {:anexar, entidad, registro})
   end
 
   @doc """
@@ -90,7 +90,7 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia do
   end
 
   @impl true
-  def handle_cast({:anexar, entidad, registro}, estado) do
+  def handle_call({:anexar, entidad, registro}, _from, estado) do
     ejecutar_anexo(entidad, registro, estado)
   end
 
@@ -138,18 +138,22 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia do
   @doc """
   Ejecutar anexo append-only al final del archivo correspondiente.
   """
-  @spec ejecutar_anexo(atom(), struct(), map()) :: {:noreply, map()}
+  @spec ejecutar_anexo(atom(), struct(), map()) :: {:reply, :ok | {:error, atom()}, map()}
   def ejecutar_anexo(entidad, registro, estado) do
     directorio_actual = obtener_directorio()
     File.mkdir_p!(directorio_actual)
     nombre_archivo = Map.get(@archivos, entidad, "#{entidad}.txt")
     ruta = Path.join(directorio_actual, nombre_archivo)
 
-    with {:ok, linea} <- CodificadorTexto.codificar(registro) do
-      File.write(ruta, linea <> "\n", [:append])
-    end
+    resultado =
+      with {:ok, linea} <- CodificadorTexto.codificar(registro),
+           :ok <- File.write(ruta, linea <> "\n", [:append]) do
+        :ok
+      else
+        error -> error
+      end
 
-    {:noreply, %{estado | directorio: directorio_actual}}
+    {:reply, resultado, %{estado | directorio: directorio_actual}}
   end
 
   @doc """
@@ -175,7 +179,7 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia do
   end
 
   @doc """
-  Leer y decodificar todos los registros contenidos en el archivo de texto de una entidad.
+  Leer y decodificar registros contenidos en el archivo tolerando líneas corruptas.
   """
   @spec leer_archivo(String.t(), atom()) :: {:ok, list(struct())}
   def leer_archivo(directorio, entidad) do
@@ -188,8 +192,12 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia do
         |> File.stream!()
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == ""))
-        |> Enum.map(&CodificadorTexto.decodificar(&1, entidad))
-        |> Enum.map(fn {:ok, struct} -> struct end)
+        |> Enum.flat_map(fn linea ->
+          case CodificadorTexto.decodificar(linea, entidad) do
+            {:ok, struct} -> [struct]
+            _ -> []
+          end
+        end)
 
       {:ok, registros}
     else

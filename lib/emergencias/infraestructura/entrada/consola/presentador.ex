@@ -67,7 +67,7 @@ defmodule Emergencias.Infraestructura.Entrada.Presentador do
   @doc """
   Formatear mensaje explicativo para errores de negocio y validación.
   """
-  @spec formatear_error(atom() | String.t()) :: String.t()
+  @spec formatear_error(atom() | String.t() | struct()) :: String.t()
   def formatear_error(:sin_permiso), do: "[ERROR] Permiso denegado: tu rol no tiene autorización para esta operación."
   def formatear_error(:no_autenticado), do: "[ERROR] Debes iniciar sesión con 'connect <usuario> <clave>' antes de continuar."
   def formatear_error(:clave_incorrecta), do: "[ERROR] Contraseña incorrecta para el usuario indicado."
@@ -77,9 +77,28 @@ defmodule Emergencias.Infraestructura.Entrada.Presentador do
   def formatear_error(:persona_no_encontrada), do: "[ERROR] No se encontró ningún registro para el documento suministrado."
   def formatear_error(:ya_cerrada), do: "[ERROR] No es posible modificar una entidad que ya se encuentra en estado terminal/cerrada."
   def formatear_error(:transicion_invalida), do: "[ERROR] Transición de estado no permitida según el flujo formal del sistema."
+  def formatear_error(:necesidad_no_encontrada), do: "[ERROR] La necesidad indicada no existe en el sistema."
+  def formatear_error(:necesidad_ya_cerrada), do: "[ERROR] La necesidad ya fue atendida o cerrada y no puede recibir más suministros."
+  def formatear_error(:necesidad_ya_atendida), do: "[ERROR] La necesidad ya fue atendida en su totalidad y no puede recibir más suministros."
+  def formatear_error(:necesidad_cancelada), do: "[ERROR] La necesidad se encuentra cancelada y no puede recibir suministros."
+  def formatear_error(:cantidad_excede_necesidad), do: "[ERROR] La cantidad especificada supera el saldo pendiente de la necesidad."
+  def formatear_error(:tipo_recurso_incompatible), do: "[ERROR] El tipo de recurso no coincide con el solicitado por la necesidad."
+  def formatear_error(:recurso_no_encontrado), do: "[ERROR] El recurso especificado no existe en el inventario."
+  def formatear_error(:recurso_origen_no_encontrado), do: "[ERROR] El recurso o centro de origen no existe."
+  def formatear_error(:recurso_destino_no_encontrado), do: "[ERROR] El recurso o centro de destino no existe."
+  def formatear_error(:cantidad_invalida), do: "[ERROR] La cantidad debe ser un número entero estrictamente positivo (> 0)."
+  def formatear_error(:entero_invalido), do: "[ERROR] El valor suministrado debe ser un número entero válido."
+  def formatear_error(:nivel_invalido), do: "[ERROR] Nivel de gravedad inválido. Valores permitidos: critico, alto, medio, bajo."
+  def formatear_error(:prioridad_invalida), do: "[ERROR] Prioridad inválida. Valores permitidos: critica, alta, media, baja."
+  def formatear_error(:rol_invalido), do: "[ERROR] Rol inválido. Valores permitidos: ciudadano, voluntario, coordinador, administrador."
+  def formatear_error(:tamano_invalido), do: "[ERROR] Tamaño de mascota inválido. Valores permitidos: pequeno, mediano, grande."
+  def formatear_error(:tipo_reporte_invalido), do: "[ERROR] Tipo de reporte inválido. Valores permitidos: perdida, encontrada."
+  def formatear_error(:albergue_no_encontrado), do: "[ERROR] El albergue indicado no existe en el sistema."
+  def formatear_error(:zona_no_encontrada), do: "[ERROR] La zona indicada no existe en el sistema."
   def formatear_error(:comando_desconocido), do: "[ERROR] Comando no reconocido. Escribe 'help' para consultar la ayuda."
   def formatear_error(:argumentos_invalidos), do: "[ERROR] Sintaxis o cantidad de argumentos incorrecta para este comando."
   def formatear_error(:linea_vacia), do: ""
+  def formatear_error(%{__struct__: _} = err), do: "[ERROR] Error de ejecución: #{Exception.message(err)}"
   def formatear_error(otro), do: "[ERROR] Ocurrió un error en la operación: #{inspect(otro)}"
 
   @doc """
@@ -155,18 +174,35 @@ defmodule Emergencias.Infraestructura.Entrada.Presentador do
   end
 
   @doc """
-  Formatear datos de albergue y su tasa de ocupación.
+  Formatear datos de albergue, su tasa de ocupación, recursos asignados y necesidades asociadas.
   """
   @spec formatear_albergue(Albergue.t()) :: String.t()
   def formatear_albergue(%Albergue{} = a) do
     ocupados = MapSet.size(a.personas_alojadas)
     porcentaje = Ocupacion.calcular_porcentaje_ocupacion(a)
+    recursos_str =
+      if map_size(a.recursos_asignados) == 0 do
+        "Ninguno"
+      else
+        a.recursos_asignados
+        |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
+        |> Enum.join(", ")
+      end
+
+    necesidades_str =
+      if Enum.empty?(a.necesidades_asociadas) do
+        "Ninguna"
+      else
+        Enum.join(a.necesidades_asociadas, ", ")
+      end
 
     """
-    Albergue:    [#{a.id}] #{a.nombre}
-    Zona:        #{a.codigo_zona}
-    Capacidad:   #{ocupados} / #{a.capacidad_maxima} personas (#{porcentaje}%)
-    Ocupantes:   #{if ocupados == 0, do: "Ninguno", else: a.personas_alojadas |> Enum.join(", ")}
+    Albergue:     [#{a.id}] #{a.nombre}
+    Zona:         #{a.codigo_zona}
+    Capacidad:    #{ocupados} / #{a.capacidad_maxima} personas (#{porcentaje}%)
+    Ocupantes:    #{if ocupados == 0, do: "Ninguno", else: a.personas_alojadas |> Enum.join(", ")}
+    Recursos:     #{recursos_str}
+    Necesidades:  #{necesidades_str}
     """
   end
 

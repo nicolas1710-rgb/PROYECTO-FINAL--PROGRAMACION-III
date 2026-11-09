@@ -47,6 +47,7 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
       to_string(n.estado),
       n.fecha_registro,
       n.usuario_reporta,
+      n.descripcion,
       hist_str
     ]
 
@@ -56,6 +57,7 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
   def codificar(%Recurso{} = r) do
     campos = [
       r.id,
+      r.nombre,
       r.tipo,
       r.unidad_medida,
       to_string(r.cantidad_total),
@@ -129,7 +131,20 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
 
   def codificar(%Albergue{} = a) do
     ocupantes_str = a.personas_alojadas |> MapSet.to_list() |> Enum.join(";")
-    campos = [a.id, a.nombre, a.codigo_zona, to_string(a.capacidad_maxima), a.fecha_registro, ocupantes_str]
+    recursos_str = a.recursos_asignados |> Enum.map(fn {k, v} -> "#{k}:#{v}" end) |> Enum.join(";")
+    necs_str = Enum.join(a.necesidades_asociadas, ";")
+
+    campos = [
+      a.id,
+      a.nombre,
+      a.codigo_zona,
+      to_string(a.capacidad_maxima),
+      a.fecha_registro,
+      ocupantes_str,
+      recursos_str,
+      necs_str
+    ]
+
     {:ok, unir_campos(campos)}
   end
 
@@ -180,6 +195,24 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
 
   def decodificar(linea, :necesidades) do
     case separar_campos(linea) do
+      [id, zona, rec, cant_sol, cant_asig, prior, est, fecha, user, desc, hist_str] ->
+        hist = decodificar_historial_eventos(hist_str)
+
+        Necesidad.construir(%{
+          id: id,
+          codigo_zona: zona,
+          tipo_recurso: rec,
+          cantidad_solicitada: String.to_integer(cant_sol),
+          cantidad_asignada: String.to_integer(cant_asig),
+          prioridad: convertir_prioridad(prior),
+          estado: convertir_estado_necesidad(est),
+          fecha_registro: fecha,
+          usuario_reporta: user,
+          descripcion: desc,
+          historial: hist
+        })
+
+      # Compatibilidad con formato sin descripción previa
       [id, zona, rec, cant_sol, cant_asig, prior, est, fecha, user, hist_str] ->
         hist = decodificar_historial_eventos(hist_str)
 
@@ -193,6 +226,7 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
           estado: convertir_estado_necesidad(est),
           fecha_registro: fecha,
           usuario_reporta: user,
+          descripcion: "",
           historial: hist
         })
 
@@ -203,9 +237,24 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
 
   def decodificar(linea, :recursos) do
     case separar_campos(linea) do
+      [id, nombre, tipo, unidad, total, disp, res, zona, fecha] ->
+        Recurso.construir(%{
+          id: id,
+          nombre: nombre,
+          tipo: tipo,
+          unidad_medida: unidad,
+          cantidad_total: String.to_integer(total),
+          cantidad_disponible: String.to_integer(disp),
+          cantidad_reservada: String.to_integer(res),
+          codigo_zona: zona,
+          fecha_registro: fecha
+        })
+
+      # Compatibilidad con formato anterior sin nombre
       [id, tipo, unidad, total, disp, res, zona, fecha] ->
         Recurso.construir(%{
           id: id,
+          nombre: tipo,
           tipo: tipo,
           unidad_medida: unidad,
           cantidad_total: String.to_integer(total),
@@ -305,13 +354,24 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
 
   def decodificar(linea, :albergues) do
     case separar_campos(linea) do
+      [id, nom, zona, cap, fecha, ocupantes_str, recursos_str, necs_str] ->
+        ocupantes = parsear_conjunto(ocupantes_str)
+        recursos = parsear_mapa_recursos(recursos_str)
+        necs = if necs_str == "", do: [], else: String.split(necs_str, ";")
+
+        Albergue.construir(%{
+          id: id,
+          nombre: nom,
+          codigo_zona: zona,
+          capacidad_maxima: String.to_integer(cap),
+          fecha_registro: fecha,
+          personas_alojadas: ocupantes,
+          recursos_asignados: recursos,
+          necesidades_asociadas: necs
+        })
+
       [id, nom, zona, cap, fecha, ocupantes_str] ->
-        ocupantes =
-          if ocupantes_str == "" do
-            MapSet.new()
-          else
-            ocupantes_str |> String.split(";") |> MapSet.new()
-          end
+        ocupantes = parsear_conjunto(ocupantes_str)
 
         Albergue.construir(%{
           id: id,
@@ -390,6 +450,22 @@ defmodule Emergencias.Infraestructura.Salida.Persistencia.CodificadorTexto do
   defp convertir_estado_mascota("posible_coincidencia"), do: :posible_coincidencia
   defp convertir_estado_mascota("resuelta"), do: :resuelta
   defp convertir_estado_mascota(_), do: :activa
+
+  defp parsear_conjunto(""), do: MapSet.new()
+  defp parsear_conjunto(str), do: str |> String.split(";") |> MapSet.new()
+
+  defp parsear_mapa_recursos(""), do: %{}
+
+  defp parsear_mapa_recursos(str) do
+    str
+    |> String.split(";", trim: true)
+    |> Enum.reduce(%{}, fn par, acc ->
+      case String.split(par, ":") do
+        [k, v] -> Map.put(acc, k, String.to_integer(v))
+        _ -> acc
+      end
+    end)
+  end
 
   # Funciones privadas para escape y unión de campos
   defp unir_campos(campos) do

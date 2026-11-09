@@ -1,9 +1,12 @@
 defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
   @moduledoc """
   GenServer para la administración de usuarios, credenciales y sesiones concurrentes en memoria.
+  Implementa el puerto de salida PuertoSalidaUsuarios.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaUsuarios
 
   alias Emergencias.Aplicacion.CasosUso.GestionarUsuarios
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
@@ -43,6 +46,7 @@ defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
     }
   end
 
+  @impl true
   @doc """
   Conectar un usuario; si no existe, lo registra automáticamente con clave cifrada.
   """
@@ -51,6 +55,7 @@ defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
     GenServer.call(__MODULE__, {:conectar, nombre, clave, rol})
   end
 
+  @impl true
   @doc """
   Cerrar la sesión de un usuario.
   """
@@ -65,6 +70,31 @@ defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
   @spec listar_usuarios() :: {:ok, list(Usuario.t())}
   def listar_usuarios do
     GenServer.call(__MODULE__, :listar)
+  end
+
+  @impl true
+  @doc """
+  Listar usuarios (implementación de puerto).
+  """
+  @spec listar() :: {:ok, list(Usuario.t())}
+  def listar, do: listar_usuarios()
+
+  @impl true
+  @doc """
+  Consultar un usuario por nombre.
+  """
+  @spec consultar(String.t()) :: {:ok, Usuario.t()} | {:error, atom()}
+  def consultar(nombre) do
+    GenServer.call(__MODULE__, {:consultar, nombre})
+  end
+
+  @impl true
+  @doc """
+  Registrar un usuario directamente.
+  """
+  @spec registrar(Usuario.t()) :: {:ok, Usuario.t()} | {:error, atom()}
+  def registrar(%Usuario{} = usuario) do
+    GenServer.call(__MODULE__, {:registrar, usuario})
   end
 
   # Callbacks OTP
@@ -86,6 +116,16 @@ defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
   @impl true
   def handle_call(:listar, _from, estado) do
     responder_listado(estado)
+  end
+
+  @impl true
+  def handle_call({:consultar, nombre}, _from, estado) do
+    ejecutar_consulta_usuario(nombre, estado)
+  end
+
+  @impl true
+  def handle_call({:registrar, usuario}, _from, estado) do
+    ejecutar_guardado_usuario(usuario, estado)
   end
 
   # Funciones con verbos en infinitivo
@@ -139,6 +179,31 @@ defmodule Emergencias.Infraestructura.Procesos.GestorUsuarios do
   @spec responder_listado(map()) :: {:reply, {:ok, list(Usuario.t())}, map()}
   def responder_listado(estado) do
     {:reply, {:ok, Map.values(estado.usuarios)}, estado}
+  end
+
+  @doc """
+  Ejecutar la consulta de un usuario por su nombre.
+  """
+  @spec ejecutar_consulta_usuario(String.t(), map()) ::
+          {:reply, {:ok, Usuario.t()} | {:error, :usuario_no_encontrado}, map()}
+  def ejecutar_consulta_usuario(nombre, estado) do
+    clave = String.downcase(to_string(nombre))
+
+    case Map.get(estado.usuarios, clave) do
+      nil -> {:reply, {:error, :usuario_no_encontrado}, estado}
+      usuario -> {:reply, {:ok, usuario}, estado}
+    end
+  end
+
+  @doc """
+  Guardar un usuario en memoria y persistencia.
+  """
+  @spec ejecutar_guardado_usuario(Usuario.t(), map()) ::
+          {:reply, {:ok, Usuario.t()}, map()}
+  def ejecutar_guardado_usuario(%Usuario{} = usuario, estado) do
+    MotorPersistencia.guardar(:usuarios, usuario)
+    nuevos = Map.put(estado.usuarios, String.downcase(usuario.nombre), usuario)
+    {:reply, {:ok, usuario}, %{estado | usuarios: nuevos}}
   end
 
   defp registrar_nuevo_usuario(nombre, hash, rol, fecha, estado) do

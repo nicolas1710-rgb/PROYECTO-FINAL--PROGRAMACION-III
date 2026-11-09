@@ -151,6 +151,15 @@ defmodule Emergencias.Aplicacion.CasosUsoTest do
     assert r1.id == "R001"
     assert r2.id == "R002"
 
+    # Registrar necesidad previa para permitir la asignación vinculada
+    params_nec = %{
+      codigo_zona: "Z001",
+      tipo_recurso: "agua",
+      cantidad_solicitada: 50,
+      prioridad: :alta
+    }
+    assert {:ok, _n} = GestionarNecesidades.registrar_necesidad(params_nec, coord, opts)
+
     # Asignar 30 litros de R001 a N001
     assert {:ok, {r1_act, mov}} =
              GestionarRecursos.asignar_recurso("R001", "N001", 30, coord, opts)
@@ -265,6 +274,7 @@ defmodule Emergencias.Aplicacion.CasosUsoTest do
     # Sembrar recursos
     r_critico = %Emergencias.Dominio.Modelos.Recurso{
       id: "R001",
+      nombre: "Gasas Esterilizadas",
       tipo: "gasas",
       unidad_medida: "paquetes",
       cantidad_total: 5,
@@ -276,6 +286,7 @@ defmodule Emergencias.Aplicacion.CasosUsoTest do
 
     r_abundante = %Emergencias.Dominio.Modelos.Recurso{
       id: "R002",
+      nombre: "Agua Potable",
       tipo: "agua",
       unidad_medida: "litros",
       cantidad_total: 500,

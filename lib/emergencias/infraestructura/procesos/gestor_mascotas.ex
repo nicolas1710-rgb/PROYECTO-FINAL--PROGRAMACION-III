@@ -2,9 +2,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
   @moduledoc """
   GenServer para la administración concurrente de reportes de mascotas y su emparejamiento.
   Impide el doble cierre y serializa resoluciones.
+  Implementa el puerto de salida PuertoSalidaMascotas.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaMascotas
 
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.ReporteMascota
@@ -51,6 +54,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
     GenServer.call(__MODULE__, {:reportar, params, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: reportar mascota."
+  @spec reportar(map(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
+  def reportar(params, usuario), do: reportar_mascota(params, usuario)
+
   @doc """
   Emparejar mascotas activas calculando similitud ponderada.
   """
@@ -60,6 +68,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
     GenServer.call(__MODULE__, {:emparejar, umbral})
   end
 
+  @impl true
+  @doc "Implementación del puerto: emparejar mascotas."
+  @spec emparejar(non_neg_integer()) ::
+          {:ok, list({ReporteMascota.t(), ReporteMascota.t(), non_neg_integer()})}
+  def emparejar(umbral), do: emparejar_mascotas(umbral)
+
   @doc """
   Resolver reporte de mascota impidiendo el doble cierre.
   """
@@ -68,6 +82,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
     GenServer.call(__MODULE__, {:resolver, id_mascota, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: resolver caso de mascota."
+  @spec resolver(String.t(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
+  def resolver(id_mascota, usuario), do: resolver_mascota(id_mascota, usuario)
+
   @doc """
   Listar todos los reportes de mascotas en memoria.
   """
@@ -75,6 +94,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
   def listar_mascotas do
     GenServer.call(__MODULE__, :listar)
   end
+
+  @impl true
+  @doc "Implementación del puerto: listar reportes de mascotas."
+  @spec listar() :: {:ok, list(ReporteMascota.t())}
+  def listar, do: listar_mascotas()
 
   @doc """
   Recargar reportes de mascotas desde persistencia en disco.

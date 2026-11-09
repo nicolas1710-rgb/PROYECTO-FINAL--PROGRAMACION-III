@@ -2,9 +2,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
   @moduledoc """
   GenServer CLAVE para el control concurrente y transaccional de inventario.
   Serializa atómicamente asignaciones y transferencias previniendo sobreasignación y saldos negativos.
+  Implementa el puerto de salida PuertoSalidaRecursos.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaRecursos
 
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.{MovimientoInventario, Recurso}
@@ -51,6 +54,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
     GenServer.call(__MODULE__, {:registrar, params, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: registrar recurso."
+  @spec registrar(map(), String.t()) :: {:ok, Recurso.t()} | {:error, atom()}
+  def registrar(params, usuario), do: registrar_recurso(params, usuario)
+
   @doc """
   Asignar de forma estrictamente atómica una cantidad de un recurso para atender una necesidad.
   """
@@ -60,13 +68,29 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
     GenServer.call(__MODULE__, {:asignar, id_recurso, id_necesidad, cantidad, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: asignar existencias."
+  @spec asignar(String.t(), String.t(), pos_integer(), String.t()) ::
+          {:ok, {Recurso.t(), MovimientoInventario.t()}} | {:error, atom()}
+  def asignar(id_recurso, id_necesidad, cantidad, usuario) do
+    asignar_recurso(id_recurso, id_necesidad, cantidad, usuario)
+  end
+
   @doc """
-  Transferir existencias entre dos recursos de forma atómica.
+  Transferir existencias entre dos recursos o centros de apoyo de forma atómica.
   """
   @spec transferir_recurso(String.t(), String.t(), pos_integer(), String.t()) ::
           {:ok, {Recurso.t(), Recurso.t()}} | {:error, atom()}
   def transferir_recurso(id_origen, id_destino, cantidad, usuario) do
     GenServer.call(__MODULE__, {:transferir, id_origen, id_destino, cantidad, usuario})
+  end
+
+  @impl true
+  @doc "Implementación del puerto: transferir existencias."
+  @spec transferir(String.t(), String.t(), pos_integer(), String.t()) ::
+          {:ok, {Recurso.t(), Recurso.t()}} | {:error, atom()}
+  def transferir(id_origen, id_destino, cantidad, usuario) do
+    transferir_recurso(id_origen, id_destino, cantidad, usuario)
   end
 
   @doc """
@@ -77,12 +101,29 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
     GenServer.call(__MODULE__, {:consultar, id_recurso})
   end
 
+  @impl true
+  @doc "Implementación del puerto: consultar recurso."
+  @spec consultar(String.t()) :: {:ok, Recurso.t()} | {:error, atom()}
+  def consultar(id_recurso), do: consultar_recurso(id_recurso)
+
   @doc """
   Listar todos los recursos aplicando filtros.
   """
   @spec listar_recursos(keyword()) :: {:ok, list(Recurso.t())}
   def listar_recursos(filtros \\ []) do
     GenServer.call(__MODULE__, {:listar, filtros})
+  end
+
+  @impl true
+  @doc "Implementación del puerto: listar recursos."
+  @spec listar(keyword()) :: {:ok, list(Recurso.t())}
+  def listar(filtros \\ []), do: listar_recursos(filtros)
+
+  @impl true
+  @doc "Implementación del puerto: listar movimientos de inventario."
+  @spec listar_movimientos() :: {:ok, list(MovimientoInventario.t())}
+  def listar_movimientos do
+    GenServer.call(__MODULE__, :listar_movimientos)
   end
 
   @doc """
@@ -130,6 +171,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
     ejecutar_listado(filtros, estado)
   end
 
+  @impl true
+  def handle_call(:listar_movimientos, _from, estado) do
+    ejecutar_listado_movimientos(estado)
+  end
+
   # Funciones con verbos en infinitivo
   @doc """
   Inicializar el estado cargando recursos y movimientos desde persistencia.
@@ -150,17 +196,20 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
           {:reply, {:ok, Recurso.t()} | {:error, atom()}, map()}
   def ejecutar_registro(params, usuario, estado) do
     with {:ok, validados} <- Validaciones.validar_entrada_recurso(params) do
-      nuevo_id = GeneradorId.formatear_id(:recurso, map_size(estado.recursos) + 1)
+      nuevo_id = Map.get(params, :id) || GeneradorId.formatear_id(:recurso, map_size(estado.recursos) + 1)
       id_mov = GeneradorId.formatear_id(:movimiento, estado.total_movimientos + 1)
       fecha = Reloj.obtener_fecha_actual()
+      nombre = Map.get(validados, :nombre, validados.tipo)
 
       {:ok, nuevo_rec} =
         Recurso.construir(%{
           id: nuevo_id,
+          nombre: nombre,
           tipo: validados.tipo,
           unidad_medida: validados.unidad_medida,
           cantidad_total: validados.cantidad_total,
           cantidad_disponible: validados.cantidad_total,
+          cantidad_reservada: 0,
           codigo_zona: validados.codigo_zona,
           fecha_registro: fecha
         })
@@ -219,7 +268,7 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
   end
 
   @doc """
-  Ejecutar la transferencia atómica entre recursos.
+  Ejecutar la transferencia atómica entre recursos o centros de apoyo territorial.
   """
   @spec ejecutar_transferencia(String.t(), String.t(), pos_integer(), String.t(), map()) ::
           {:reply, {:ok, {Recurso.t(), Recurso.t()}} | {:error, atom()}, map()}
@@ -228,39 +277,86 @@ defmodule Emergencias.Infraestructura.Procesos.GestorRecursos do
     c_dest = String.upcase(id_destino)
 
     r_orig = Map.get(estado.recursos, c_orig)
-    r_dest = Map.get(estado.recursos, c_dest)
 
-    cond do
-      is_nil(r_orig) ->
-        {:reply, {:error, :recurso_origen_no_encontrado}, estado}
+    if is_nil(r_orig) do
+      {:reply, {:error, :recurso_origen_no_encontrado}, estado}
+    else
+      {r_dest, estado_actualizado} = resolver_destino_transferencia(c_dest, r_orig, estado)
+      fecha = Reloj.obtener_fecha_actual()
+      id_m1 = GeneradorId.formatear_id(:movimiento, estado_actualizado.total_movimientos + 1)
+      id_m2 = GeneradorId.formatear_id(:movimiento, estado_actualizado.total_movimientos + 2)
 
-      is_nil(r_dest) ->
-        {:reply, {:error, :recurso_destino_no_encontrado}, estado}
+      case Inventario.transferir(r_orig, r_dest, cantidad, {id_m1, id_m2}, usuario, fecha) do
+        {:ok, {o_act, d_act, m1, m2}} ->
+          MotorPersistencia.guardar(:recursos, o_act)
+          MotorPersistencia.guardar(:recursos, d_act)
+          MotorPersistencia.anexar(:movimientos, m1)
+          MotorPersistencia.anexar(:movimientos, m2)
 
-      true ->
-        fecha = Reloj.obtener_fecha_actual()
-        id_m1 = GeneradorId.formatear_id(:movimiento, estado.total_movimientos + 1)
-        id_m2 = GeneradorId.formatear_id(:movimiento, estado.total_movimientos + 2)
+          nuevos =
+            estado_actualizado.recursos
+            |> Map.put(c_orig, o_act)
+            |> Map.put(String.upcase(d_act.id), d_act)
 
-        case Inventario.transferir(r_orig, r_dest, cantidad, {id_m1, id_m2}, usuario, fecha) do
-          {:ok, {o_act, d_act, m1, m2}} ->
-            MotorPersistencia.guardar(:recursos, o_act)
-            MotorPersistencia.guardar(:recursos, d_act)
-            MotorPersistencia.anexar(:movimientos, m1)
-            MotorPersistencia.anexar(:movimientos, m2)
+          nuevo_estado = %{
+            estado_actualizado
+            | recursos: nuevos,
+              total_movimientos: estado_actualizado.total_movimientos + 2
+          }
 
-            nuevos =
-              estado.recursos
-              |> Map.put(c_orig, o_act)
-              |> Map.put(c_dest, d_act)
+          {:reply, {:ok, {o_act, d_act}}, nuevo_estado}
 
-            nuevo_estado = %{estado | recursos: nuevos, total_movimientos: estado.total_movimientos + 2}
-            {:reply, {:ok, {o_act, d_act}}, nuevo_estado}
+        {:error, razon} ->
+          {:reply, {:error, razon}, estado}
+      end
+    end
+  end
 
-          {:error, razon} ->
-            {:reply, {:error, razon}, estado}
+  defp resolver_destino_transferencia(c_dest, r_orig, estado) do
+    case Map.get(estado.recursos, c_dest) do
+      %Recurso{} = directo ->
+        {directo, estado}
+
+      nil ->
+        # Buscar en la zona destino un recurso compatible
+        existente =
+          Enum.find(Map.values(estado.recursos), fn r ->
+            String.upcase(r.codigo_zona) == c_dest and
+              String.downcase(r.tipo) == String.downcase(r_orig.tipo)
+          end)
+
+        if existente != nil do
+          {existente, estado}
+        else
+          # Crear recurso nuevo en el centro destino
+          nuevo_id = GeneradorId.formatear_id(:recurso, map_size(estado.recursos) + 1)
+          fecha = Reloj.obtener_fecha_actual()
+
+          {:ok, nuevo} =
+            Recurso.construir(%{
+              id: nuevo_id,
+              nombre: r_orig.nombre,
+              tipo: r_orig.tipo,
+              unidad_medida: r_orig.unidad_medida,
+              cantidad_total: 0,
+              cantidad_disponible: 0,
+              cantidad_reservada: 0,
+              codigo_zona: c_dest,
+              fecha_registro: fecha
+            })
+
+          {nuevo, %{estado | recursos: Map.put(estado.recursos, String.upcase(nuevo_id), nuevo)}}
         end
     end
+  end
+
+  @doc """
+  Responder la lista de movimientos registrados en persistencia.
+  """
+  @spec ejecutar_listado_movimientos(map()) :: {:reply, {:ok, list(MovimientoInventario.t())}, map()}
+  def ejecutar_listado_movimientos(estado) do
+    {:ok, movimientos} = MotorPersistencia.cargar(:movimientos)
+    {:reply, {:ok, movimientos}, estado}
   end
 
   @doc """

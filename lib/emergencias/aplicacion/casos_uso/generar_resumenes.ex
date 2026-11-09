@@ -8,12 +8,6 @@ defmodule Emergencias.Aplicacion.CasosUso.GenerarResumenes do
 
   alias Emergencias.Dominio.Modelos.{Necesidad, Recurso, Usuario}
   alias Emergencias.Dominio.Reglas.{Ordenamiento, Permisos}
-  alias Emergencias.Infraestructura.Procesos.{
-    GestorMascotas,
-    GestorNecesidades,
-    GestorPersonas,
-    GestorRecursos
-  }
 
   @impl true
   @doc """
@@ -27,7 +21,7 @@ defmodule Emergencias.Aplicacion.CasosUso.GenerarResumenes do
       {:ok, personas} = obtener_datos_personas(opciones)
       {:ok, mensajes} = obtener_datos_mensajes(opciones)
       {:ok, mascotas} = obtener_datos_mascotas(opciones)
-      {:ok, albergues} = cargar_datos_repo(opciones, :albergues)
+      {:ok, albergues} = obtener_datos_albergues(opciones)
 
       total_disponible = Enum.reduce(recursos, 0, fn r, acc -> acc + r.cantidad_disponible end)
       pendientes = Enum.count(necesidades, fn n -> n.estado == :pendiente end)
@@ -80,58 +74,88 @@ defmodule Emergencias.Aplicacion.CasosUso.GenerarResumenes do
     end
   end
 
-  defp obtener_datos_recursos(opts) do
-    repo = Keyword.get(opts, :repositorio)
+  defp resolver_puerto(opciones, clave, config_key) do
+    cond do
+      Keyword.has_key?(opciones, clave) -> Keyword.get(opciones, clave)
+      Keyword.has_key?(opciones, :repositorio) -> nil
+      true -> Application.get_env(:emergencias, config_key)
+    end
+  end
 
-    if Process.whereis(GestorRecursos) != nil and is_nil(repo) do
-      GestorRecursos.listar_recursos()
-    else
-      cargar_datos_repo(opts, :recursos)
+  defp obtener_datos_recursos(opts) do
+    puerto = resolver_puerto(opts, :puerto_recursos, :puerto_recursos)
+
+    cond do
+      puerto != nil and function_exported?(puerto, :listar, 1) ->
+        puerto.listar([])
+
+      true ->
+        cargar_datos_repo(opts, :recursos)
     end
   end
 
   defp obtener_datos_necesidades(opts) do
-    repo = Keyword.get(opts, :repositorio)
+    puerto = resolver_puerto(opts, :puerto_necesidades, :puerto_necesidades)
 
-    if Process.whereis(GestorNecesidades) != nil and is_nil(repo) do
-      GestorNecesidades.listar_necesidades()
-    else
-      cargar_datos_repo(opts, :necesidades)
+    cond do
+      puerto != nil and function_exported?(puerto, :listar, 1) ->
+        puerto.listar([])
+
+      true ->
+        cargar_datos_repo(opts, :necesidades)
     end
   end
 
   defp obtener_datos_personas(opts) do
-    repo = Keyword.get(opts, :repositorio)
+    puerto = resolver_puerto(opts, :puerto_personas, :puerto_personas)
 
-    if Process.whereis(GestorPersonas) != nil and is_nil(repo) do
-      GestorPersonas.listar_personas()
-    else
-      cargar_datos_repo(opts, :personas)
+    cond do
+      puerto != nil and function_exported?(puerto, :listar_personas, 0) ->
+        puerto.listar_personas()
+
+      true ->
+        cargar_datos_repo(opts, :personas)
     end
   end
 
   defp obtener_datos_mensajes(opts) do
-    repo = Keyword.get(opts, :repositorio)
+    puerto = resolver_puerto(opts, :puerto_personas, :puerto_personas)
 
-    if Process.whereis(GestorPersonas) != nil and is_nil(repo) do
-      GestorPersonas.listar_todos_mensajes()
-    else
-      cargar_datos_repo(opts, :mensajes)
+    cond do
+      puerto != nil and function_exported?(puerto, :listar_todos_mensajes, 0) ->
+        puerto.listar_todos_mensajes()
+
+      true ->
+        cargar_datos_repo(opts, :mensajes)
     end
   end
 
   defp obtener_datos_mascotas(opts) do
-    repo = Keyword.get(opts, :repositorio)
+    puerto = resolver_puerto(opts, :puerto_mascotas, :puerto_mascotas)
 
-    if Process.whereis(GestorMascotas) != nil and is_nil(repo) do
-      GestorMascotas.listar_mascotas()
-    else
-      cargar_datos_repo(opts, :mascotas)
+    cond do
+      puerto != nil and function_exported?(puerto, :listar, 0) ->
+        puerto.listar()
+
+      true ->
+        cargar_datos_repo(opts, :mascotas)
+    end
+  end
+
+  defp obtener_datos_albergues(opts) do
+    puerto = resolver_puerto(opts, :puerto_albergues, :puerto_albergues)
+
+    cond do
+      puerto != nil and function_exported?(puerto, :listar, 0) ->
+        puerto.listar()
+
+      true ->
+        cargar_datos_repo(opts, :albergues)
     end
   end
 
   defp cargar_datos_repo(opts, entidad) do
-    repo = Keyword.get(opts, :repositorio, Emergencias.Infraestructura.Salida.Persistencia.AlmacenArchivo)
-    if function_exported?(repo, :cargar, 1), do: repo.cargar(entidad), else: {:ok, []}
+    repo = Keyword.get(opts, :repositorio)
+    if repo != nil and function_exported?(repo, :cargar, 1), do: repo.cargar(entidad), else: {:ok, []}
   end
 end

@@ -8,7 +8,6 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.{Usuario, Zona}
   alias Emergencias.Dominio.Reglas.{Permisos, Validaciones}
-  alias Emergencias.Infraestructura.Procesos.GestorZonas
 
   @impl true
   @doc """
@@ -17,12 +16,24 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
   @spec registrar_zona(map(), Usuario.t(), keyword()) :: {:ok, Zona.t()} | {:error, atom()}
   def registrar_zona(params, %Usuario{} = usuario, opciones \\ []) do
     with :ok <- Permisos.autorizar(usuario.rol, :registrar_zona) do
-      repo_personalizado = Keyword.get(opciones, :repositorio)
+      puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
+      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+      reloj = Keyword.get(opciones, :reloj, Reloj)
+      fecha = reloj.obtener_fecha_actual()
 
-      if Process.whereis(GestorZonas) != nil and is_nil(repo_personalizado) do
-        GestorZonas.registrar_zona(params)
-      else
-        ejecutar_registro_directo(params, usuario, opciones)
+      cond do
+        puerto_zonas != nil and function_exported?(puerto_zonas, :registrar, 2) ->
+          case puerto_zonas.registrar(params, usuario.nombre) do
+            {:ok, zona} ->
+              notificar_bitacora(puerto_bitacora, usuario.nombre, "registrar_zona", "Zona #{zona.id} creada", fecha)
+              {:ok, zona}
+
+            error ->
+              error
+          end
+
+        true ->
+          ejecutar_registro_directo(params, usuario, opciones)
       end
     end
   end
@@ -33,21 +44,23 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
   """
   @spec consultar_zona(String.t(), Usuario.t(), keyword()) :: {:ok, Zona.t()} | {:error, atom()}
   def consultar_zona(id_zona, %Usuario{}, opciones \\ []) do
-    repo_personalizado = Keyword.get(opciones, :repositorio)
+    puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
 
-    if Process.whereis(GestorZonas) != nil and is_nil(repo_personalizado) do
-      GestorZonas.consultar_zona(id_zona)
-    else
-      repositorio = obtener_repositorio(opciones)
+    cond do
+      puerto_zonas != nil and function_exported?(puerto_zonas, :consultar, 1) ->
+        puerto_zonas.consultar(id_zona)
 
-      case cargar_zonas(repositorio) do
-        {:ok, lista} ->
-          encontrada = Enum.find(lista, fn z -> String.upcase(z.id) == String.upcase(id_zona) end)
-          if encontrada, do: {:ok, encontrada}, else: {:error, :zona_no_encontrada}
+      true ->
+        repositorio = Keyword.get(opciones, :repositorio)
 
-        _ ->
-          {:error, :zona_no_encontrada}
-      end
+        case cargar_zonas(repositorio) do
+          {:ok, lista} ->
+            encontrada = Enum.find(lista, fn z -> String.upcase(z.id) == String.upcase(id_zona) end)
+            if encontrada, do: {:ok, encontrada}, else: {:error, :zona_no_encontrada}
+
+          _ ->
+            {:error, :zona_no_encontrada}
+        end
     end
   end
 
@@ -57,21 +70,31 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
   """
   @spec listar_zonas(Usuario.t(), keyword()) :: {:ok, list(Zona.t())} | {:error, atom()}
   def listar_zonas(%Usuario{}, opciones \\ []) do
-    repo_personalizado = Keyword.get(opciones, :repositorio)
+    puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
 
-    if Process.whereis(GestorZonas) != nil and is_nil(repo_personalizado) do
-      GestorZonas.listar_zonas()
-    else
-      repositorio = obtener_repositorio(opciones)
-      cargar_zonas(repositorio)
+    cond do
+      puerto_zonas != nil and function_exported?(puerto_zonas, :listar, 0) ->
+        puerto_zonas.listar()
+
+      true ->
+        repositorio = Keyword.get(opciones, :repositorio)
+        cargar_zonas(repositorio)
+    end
+  end
+
+  defp resolver_puerto(opciones, clave, config_key) do
+    cond do
+      Keyword.has_key?(opciones, clave) -> Keyword.get(opciones, clave)
+      Keyword.has_key?(opciones, :repositorio) -> nil
+      true -> Application.get_env(:emergencias, config_key)
     end
   end
 
   defp ejecutar_registro_directo(params, usuario, opciones) do
     with {:ok, datos_validados} <- Validaciones.validar_entrada_zona(params) do
-      repositorio = obtener_repositorio(opciones)
-      bitacora = obtener_bitacora(opciones)
-      reloj = obtener_reloj(opciones)
+      repositorio = Keyword.get(opciones, :repositorio)
+      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+      reloj = Keyword.get(opciones, :reloj, Reloj)
       fecha = reloj.obtener_fecha_actual()
 
       {:ok, existentes} = cargar_zonas(repositorio)
@@ -87,27 +110,22 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
         })
 
       guardar_zona(repositorio, nueva_zona)
-      notificar_bitacora(bitacora, usuario.nombre, "registrar_zona", "Zona #{nuevo_id} creada", fecha)
+      notificar_bitacora(puerto_bitacora, usuario.nombre, "registrar_zona", "Zona #{nuevo_id} creada", fecha)
       {:ok, nueva_zona}
     end
   end
 
-  defp obtener_repositorio(opts),
-    do: Keyword.get(opts, :repositorio, Emergencias.Infraestructura.Salida.Persistencia.AlmacenArchivo)
-
-  defp obtener_bitacora(opts),
-    do: Keyword.get(opts, :bitacora, Emergencias.Infraestructura.Procesos.BitacoraActividad)
-
-  defp obtener_reloj(opts), do: Keyword.get(opts, :reloj, Reloj)
-
+  defp cargar_zonas(nil), do: {:ok, []}
   defp cargar_zonas(repo) do
     if function_exported?(repo, :cargar, 1), do: repo.cargar(:zonas), else: {:ok, []}
   end
 
+  defp guardar_zona(nil, _zona), do: :ok
   defp guardar_zona(repo, zona) do
     if function_exported?(repo, :guardar, 2), do: repo.guardar(:zonas, zona), else: :ok
   end
 
+  defp notificar_bitacora(nil, _u, _a, _d, _f), do: :ok
   defp notificar_bitacora(bitacora, u, a, d, f) do
     if is_atom(bitacora) and function_exported?(bitacora, :registrar_actividad, 4) do
       bitacora.registrar_actividad(u, a, d, f)

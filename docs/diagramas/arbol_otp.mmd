@@ -1,26 +1,29 @@
 flowchart TD
     %% ÁRBOL DE SUPERVISIÓN OTP DEL SISTEMA DE EMERGENCIAS
 
-    SupervisorRaiz["SupervisorRaiz\n(Supervisor :one_for_one\nmax_restarts: 100, max_seconds: 5)"]
+    SupervisorRaiz["SupervisorRaiz\n(Supervisor :one_for_one\nmax_restarts: 3, max_seconds: 5)"]
 
     Reg["RegistroAlbergues\n(Registry :unique)"]
     MotorPers["MotorPersistencia\n(GenServer Escritor Atómico)"]
     Bitacora["BitacoraActividad\n(Proceso Puro con bucle receive)"]
-    GUsr["GestorUsuarios\n(GenServer)"]
-    GZon["GestorZonas\n(GenServer)"]
-    GNec["GestorNecesidades\n(GenServer)"]
-    GRec["GestorRecursos\n(GenServer Serializador Clave)"]
-    GPer["GestorPersonas\n(GenServer)"]
-    GMas["GestorMascotas\n(GenServer)"]
-    SupAlb["SupervisorAlbergues\n(DynamicSupervisor :one_for_one)"]
+    GUsr["GestorUsuarios\n(GenServer : PuertoSalidaUsuarios)"]
+    GZon["GestorZonas\n(GenServer : PuertoSalidaZonas)"]
+    GNec["GestorNecesidades\n(GenServer : PuertoSalidaNecesidades)"]
+    GRec["GestorRecursos\n(GenServer : PuertoSalidaRecursos\nSerializador Atómico de Inventario)"]
+    GPer["GestorPersonas\n(GenServer : PuertoSalidaPersonas)"]
+    GMas["GestorMascotas\n(GenServer : PuertoSalidaMascotas)"]
+    SupAlb["SupervisorAlbergues (SupAlbergues)\n(DynamicSupervisor :one_for_one)"]
     TaskSup["Emergencias.TaskSupervisor\n(Task.Supervisor Tareas Paralelas)"]
 
-    %% Procesos dinámicos bajo SupervisorAlbergues
-    Alb1["Albergue ALB001\n(Proceso Puro con bucle receive)"]
-    Alb2["Albergue ALB002\n(Proceso Puro con bucle receive)"]
-    AlbN["Albergue ALB...\n(Proceso Puro con bucle receive)"]
+    %% Adaptador de infraestructura para Albergues
+    AdaptAlb["AdaptadorAlbergues\n(Módulo Adaptador : PuertoSalidaAlbergues)"]
 
-    %% Conexiones del árbol
+    %% Procesos dinámicos bajo SupervisorAlbergues
+    Alb1["Albergue ALB001\n(Proceso Puro con bucle receive recursivo)"]
+    Alb2["Albergue ALB002\n(Proceso Puro con bucle receive recursivo)"]
+    AlbN["Albergue ALB...\n(Proceso Puro con bucle receive recursivo)"]
+
+    %% Conexiones del árbol de supervisión
     SupervisorRaiz --> Reg
     SupervisorRaiz --> MotorPers
     SupervisorRaiz --> Bitacora
@@ -33,12 +36,17 @@ flowchart TD
     SupervisorRaiz --> SupAlb
     SupervisorRaiz --> TaskSup
 
-    SupAlb -.-> Alb1
-    SupAlb -.-> Alb2
-    SupAlb -.-> AlbN
+    %% Supervisión Dinámica de Albergues
+    SupAlb -. supervisa dinámicamente .-> Alb1
+    SupAlb -. supervisa dinámicamente .-> Alb2
+    SupAlb -. supervisa dinámicamente .-> AlbN
 
     %% Relación con Registry
     Alb1 -. registrado en .-> Reg
     Alb2 -. registrado en .-> Reg
     AlbN -. registrado en .-> Reg
 
+    %% AdaptadorAlbergues coordina con Supervisor, Registry y Persistencia
+    AdaptAlb -. inicia procesos en .-> SupAlb
+    AdaptAlb -. busca PID en .-> Reg
+    AdaptAlb -. persiste en .-> MotorPers

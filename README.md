@@ -2,21 +2,23 @@
 
 **Proyecto Final — Programación III**  
 **Universidad del Quindío**  
-**Tecnología:** Elixir / OTP  
-**Arquitectura:** Hexagonal Estricta (Ports and Adapters)
+**Tecnología:** Elixir / Erlang/OTP  
+**Arquitectura:** Hexagonal Estricta (Ports and Adapters)  
+**Calidad:** 100% de Pruebas ExUnit Exitosas (74/74), Cero Advertencias (`--warnings-as-errors`)
 
 ---
 
 ## 1. Visión General del Sistema
 
-Tras un terremoto devastador, las comunicaciones y la logística colapsan. Este sistema distribuido y concurrente permite coordinar en tiempo real la ayuda humanitaria, el inventario de suministros críticos, el censo y localización de personas damnificadas, la mensajería familiar, el emparejamiento inteligente de mascotas extraviadas y el control de cupo en albergues temporales.
+Tras un terremoto devastador, las comunicaciones y la logística colapsan. Este sistema distribuido y concurrente permite coordinar en tiempo real la ayuda humanitaria, el inventario de suministros críticos, el censo y localización de personas damnificadas, la mensajería familiar, el emparejamiento inteligente de mascotas extraviadas y el control estricto de aforo en albergues temporales.
 
-El sistema fue diseñado bajo estrictos principios de diseño en Elixir y OTP:
-- **Nombres de funciones en infinitivo en español:** (`registrar/2`, `asignar/3`, `contar_puntos_atencion/1`, `poder_transitar?/2`, etc.). Los callbacks exigidos por OTP delegan de inmediato a funciones propias en infinitivo.
-- **`priv/main.exs` de una sola línea:** No contiene definiciones de funciones ni lambdas.
-- **Arquitectura Hexagonal:** Dominio puro aislado de dependencias externas, puertos formales con `@callback`, casos de uso orquestadores y adaptadores delgados de infraestructura.
-- **Funciones puras sin excepciones:** Retornos canónicos `{:ok, resultado}` y `{:error, razon_atom}`.
-- **Concurrencia segura y serialización atómica:** Resolución estricta de condiciones de carrera (ej. 30 y 25 litros solicitados simultáneamente sobre 50 disponibles) mediante `GenServer` y procesos puros con bucle `receive` recursivo.
+El sistema fue diseñado y construido bajo las siguientes **reglas innegociables**:
+- **Nombres de funciones en infinitivo en español:** (`registrar/2`, `asignar/3`, `contar_puntos_atencion/1`, `poder_transitar?/2`, etc.). Todos los callbacks exigidos por OTP (`init/1`, `handle_call/3`, `handle_cast/2`, `child_spec/1`) delegan de inmediato a funciones propias en infinitivo.
+- **`priv/main.exs` de exactamente 1 línea:** No contiene definiciones `def`/`defp` ni lambdas. Ejecutable con `mix run priv/main.exs`.
+- **Arquitectura Hexagonal Estricta:** La capa de aplicación (`lib/emergencias/aplicacion/`) tiene **0 referencias** a la infraestructura (`Emergencias.Infraestructura.*`) y **0 llamadas** a `Process.whereis`. La interacción se realiza mediante 7 puertos de salida especializados basados en `@behaviour`.
+- **Funciones puras de dominio sin excepciones:** Retornos canónicos `{:ok, resultado}` y `{:error, razon_atom}` usando pattern matching, guards y `with`.
+- **Validación previa de toda entrada:** Tipos, rangos, documentos, enums y permisos validados antes de tocar el estado o la memoria.
+- **Concurrencia segura y serialización atómica:** Resolución determinista de condiciones de carrera mediante `GenServer` (buzón FIFO) y procesos puros con bucle `receive` recursivo.
 
 ---
 
@@ -26,22 +28,17 @@ El sistema fue diseñado bajo estrictos principios de diseño en Elixir y OTP:
 emergencias/
 ├── mix.exs                                              # Configuración del proyecto Mix
 ├── README.md                                            # Documentación técnica, justificaciones y guion
+├── config/                                              # Inyección de dependencias de puertos
+│   └── config.exs
 ├── priv/
 │   ├── main.exs                                         # Entrada de producción: exactamente 1 línea
-│   └── demostracion.exs                                 # Script automatizado con el flujo completo
+│   └── demostracion.exs                                 # Script de demostración concurrente automatizada
 ├── datos/                                               # Almacenamiento transaccional en texto plano (.txt)
-│   ├── usuarios.txt
-│   ├── zonas.txt
-│   ├── necesidades.txt
-│   ├── recursos.txt
-│   ├── movimientos.txt
-│   ├── personas.txt
-│   ├── mensajes.txt
-│   ├── mascotas.txt
-│   ├── albergues.txt
-│   └── actividad.txt
+│   ├── usuarios.txt, zonas.txt, necesidades.txt, recursos.txt
+│   ├── movimientos.txt, personas.txt, mensajes.txt, mascotas.txt
+│   ├── albergues.txt y actividad.txt
 ├── docs/diagramas/                                      # Diagramas Mermaid
-│   ├── modulos.mmd                                      # Arquitectura Hexagonal
+│   ├── modulos.mmd                                      # Arquitectura Hexagonal y Puertos
 │   ├── modelo_datos.mmd                                 # Modelo ER y Clases de Dominio
 │   ├── secuencia.mmd                                    # Flujo Concurrente de Asignación Atómica
 │   └── arbol_otp.mmd                                    # Árbol de Supervisión OTP
@@ -57,19 +54,23 @@ emergencias/
 │   │       ├── validaciones.ex, transiciones_estado.ex, permisos.ex
 │   │       ├── prioridades.ex, ordenamiento.ex, inventario.ex
 │   │       ├── ocupacion.ex, similitud_mascotas.ex, estadisticas_zona.ex
-│   ├── aplicacion/                                      # CASOS DE USO Y PUERTOS
+│   ├── aplicacion/                                      # CASOS DE USO Y PUERTOS FORMALES
 │   │   ├── puertos/
 │   │   │   ├── entrada/                                 # Behaviours de casos de uso
-│   │   │   └── salida/                                  # Behaviours: Repositorio, Bitacora, Reloj, GeneradorId
+│   │   │   └── salida/                                  # 7 Behaviours de salida especializados:
+│   │   │       ├── puerto_salida_usuarios.ex, puerto_salida_zonas.ex
+│   │   │       ├── puerto_salida_necesidades.ex, puerto_salida_recursos.ex
+│   │   │       ├── puerto_salida_personas.ex, puerto_salida_mascotas.ex
+│   │   │       ├── puerto_salida_albergues.ex, bitacora.ex, reloj.ex, generador_id.ex
 │   │   └── casos_uso/                                   # Orquestación de reglas puras y puertos
 │   │       ├── gestionar_usuarios.ex, gestionar_zonas.ex, gestionar_necesidades.ex
 │   │       ├── gestionar_recursos.ex, gestionar_familiares.ex, gestionar_mascotas.ex
 │   │       └── gestionar_albergues.ex, generar_resumenes.ex
 │   └── infraestructura/                                 # ADAPTADORES EXTERNOS
 │       ├── salida/persistencia/                         # MotorPersistencia, AlmacenArchivo, CodificadorTexto
-│       ├── procesos/                                    # Gestores GenServer y procesos puros con receive
+│       ├── procesos/                                    # Gestores GenServer, AdaptadorAlbergues, Registry
 │       └── entrada/consola/                             # Consola CLI, AnalizadorComandos, Presentador, Despachador
-└── test/                                                # Suite completa de pruebas ExUnit
+└── test/                                                # Suite completa de pruebas ExUnit (74 pruebas)
 ```
 
 ---
@@ -77,7 +78,7 @@ emergencias/
 ## 3. Instrucciones de Ejecución
 
 ### Requisitos Previos
-- Elixir 1.14 o superior (probado en Elixir 1.20.4 con Erlang/OTP 29).
+- Elixir 1.14 o superior (verificado y optimizado en Elixir 1.20.4 con Erlang/OTP 29 en Windows).
 
 ### 1. Compilación Estricta
 Verifica que no exista ninguna advertencia en el código:
@@ -86,19 +87,19 @@ mix compile --warnings-as-errors
 ```
 
 ### 2. Ejecutar la Suite de Pruebas
-Ejecuta las 58 pruebas automáticas (unitarias de dominio, casos de uso, persistencia, supervisión y concurrencia):
+Ejecuta las **74 pruebas automáticas** (unitarias de dominio puro, casos de uso con persistencia en memoria, transacciones atómicas recurso-necesidad, procesos concurrentes y tolerancia a fallos):
 ```bash
 mix test
 ```
 
-### 3. Ejecutar la Demostración Automatizada
-Reproduce paso a paso el caso de estudio completo (Laura, Pedro, María, conflicto de recursos, albergues y mascotas):
+### 3. Ejecutar la Demostración Concurrente Automatizada
+Reproduce paso a paso el caso de estudio completo, demostrando la contención de stock en paralelo en vivo mediante `Task.async_stream`:
 ```bash
 mix run priv/demostracion.exs
 ```
 
 ### 4. Iniciar la Consola Interactiva
-Inicia la consola interactiva a través del archivo `priv/main.exs`:
+Inicia la consola interactiva de usuario a través de `priv/main.exs`:
 ```bash
 mix run priv/main.exs
 ```
@@ -109,36 +110,36 @@ mix run priv/main.exs
 
 | Comando | Argumentos | Rol Mínimo | Descripción |
 | :--- | :--- | :--- | :--- |
-| `connect` | `<usuario> <clave> [rol]` | Cualquiera | Inicia sesión o auto-registra al usuario con clave cifrada SHA-256. |
-| `disconnect` | *ninguno* | Autenticado | Cierra la sesión activa actual. |
+| `connect` | `<usuario> <clave> [rol]` | Cualquiera | Inicia sesión o auto-registra al usuario con clave cifrada SHA-256 + sal. |
+| `disconnect` | *ninguno* | Autenticado | Cierra la sesión activa actual en la consola. |
 | `register_zone` | `<nombre> <gravedad>` | Coordinador | Registra una nueva zona (`critico`, `alto`, `medio`, `bajo`). |
 | `register_need` | `<zona> <recurso> <cantidad> <prioridad>` | Ciudadano | Reporta una necesidad humanitaria (`critica`, `alta`, `media`, `baja`). |
-| `list_needs` | `[zona=Z] [prioridad=P] [estado=E]` | Ciudadano | Lista necesidades aplicando filtros opcionales. |
-| `assign_resource` | `<id_recurso> <id_necesidad> <cant>` | Coordinador | Asigna recursos atómicamente a una necesidad. |
-| `register_resource` | `<tipo> <unidad> <cantidad> <zona>` | Voluntario | Registra un lote de suministros en inventario. |
-| `list_resources` | `[zona=Z] [tipo=T]` | Ciudadano | Consulta las existencias disponibles de suministros. |
-| `transfer_resource` | `<id_origen> <id_destino> <cant>` | Coordinador | Transfiere stock entre recursos de distintas zonas de forma atómica. |
-| `report_person` | `<documento> "<nombre_completo>"` | Ciudadano | Reporta a una persona damnificada o extraviada. |
+| `list_needs` | `[zona=Z] [prioridad=P] [estado=E]` | Ciudadano | Lista necesidades aplicando filtros opcionales de consulta. |
+| `assign_resource` | `<id_recurso> <id_necesidad> <cant>` | Coordinador | Asigna recursos atómicamente a una necesidad, validando stock y cuota. |
+| `register_resource` | `<tipo> <unidad> <cantidad> <zona>` | Voluntario | Registra un lote de suministros en el inventario de la zona. |
+| `list_resources` | `[zona=Z] [tipo=T]` | Ciudadano | Consulta las existencias totales, disponibles y reservadas. |
+| `transfer_resource` | `<id_origen> <id_destino> <cant>` | Coordinador | Transfiere stock entre recursos o hacia un centro de apoyo de forma atómica. |
+| `report_person` | `<documento> "<nombre_completo>"` | Ciudadano | Reporta a una persona damnificada o extraviada en el censo. |
 | `find_person` | `<documento>` | Ciudadano | Consulta el estado y ubicación actual de una persona. |
-| `send_family_message` | `<documento> "<mensaje>"` | Ciudadano | Envía un mensaje familiar asociado al documento. |
-| `list_family_messages`| `<documento>` | Ciudadano | Lista los mensajes recibidos para un familiar. |
+| `send_family_message` | `<documento> "<mensaje>"` | Ciudadano | Envía un mensaje familiar asociado al documento de la persona. |
+| `list_family_messages`| `<documento>` | Ciudadano | Lista los mensajes recibidos para una persona damnificada. |
 | `report_pet` | `<tipo> <esp> <col> <tam> <zona> [nom]`| Ciudadano | Reporta mascota (`perdida` o `encontrada`). |
 | `match_pets` | `[umbral]` | Coordinador | Ejecuta algoritmo de similitud ponderada entre mascotas activas. |
-| `register_shelter` | `<nombre> <zona> <capacidad>` | Coordinador | Registra un nuevo albergue con aforo máximo. |
-| `check_shelter` | `<id_albergue>` | Ciudadano | Consulta ocupación en tiempo real y porcentaje de aforo. |
-| `register_entry` | `<id_albergue> <documento>` | Voluntario | Registra ingreso de persona validando cupo máximo. |
-| `register_exit` | `<id_albergue> <documento>` | Voluntario | Registra salida/egreso de una persona del albergue. |
+| `register_shelter` | `<nombre> <zona> <capacidad>` | Coordinador | Registra un nuevo albergue supervisado con aforo máximo. |
+| `check_shelter` | `<id_albergue>` | Ciudadano | Consulta ocupación en tiempo real, ocupantes y recursos vinculados. |
+| `register_entry` | `<id_albergue> <documento>` | Voluntario | Registra ingreso de persona validando cupo máximo sin sobrecupo. |
+| `register_exit` | `<id_albergue> <documento>` | Voluntario | Registra salida/egreso de una persona del albergue liberando cupo. |
 | `summary` | *ninguno* | Coordinador | Presenta el consolidado ejecutivo global de la emergencia. |
 | `critical_resources` | `[umbral]` | Coordinador | Lista suministros con existencias menores o iguales al umbral. |
 | `pending_needs` | *ninguno* | Coordinador | Lista necesidades pendientes ordenadas por Merge Sort recursivo. |
-| `help` | *ninguno* | Cualquiera | Muestra la ayuda de comandos interactiva. |
-| `exit` | *ninguno* | Cualquiera | Sale de la sesión y finaliza la consola. |
+| `help` | *ninguno* | Cualquiera | Muestra la guía de ayuda interactiva. |
+| `exit` | *ninguno* | Cualquiera | Finaliza la sesión y cierra la consola de forma limpia. |
 
 ---
 
 ## 5. Matriz de Control de Acceso (Permisos RBAC)
 
-La matriz está implementada mediante `MapSet` en el módulo `Emergencias.Dominio.Reglas.Permisos` para garantizar consultas de autorización $O(1)$:
+Implementada mediante `MapSet` en el módulo puro `Emergencias.Dominio.Reglas.Permisos` para garantizar verificaciones de autorización en $O(1)$:
 
 | Operación | Ciudadano | Voluntario | Coordinador | Administrador |
 | :--- | :---: | :---: | :---: | :---: |
@@ -158,203 +159,110 @@ La matriz está implementada mediante `MapSet` en el módulo `Emergencias.Domini
 
 ---
 
-## 6. Justificación de Estructuras de Datos
+## 6. Acoplamiento Transaccional: Asignación Recurso-Necesidad
 
-1. **`Map`:** Utilizado en los GenServers (`GestorRecursos`, `GestorZonas`, `GestorUsuarios`, etc.) como índice por clave identificadora. Proporciona búsquedas y actualizaciones eficientes en tiempo $O(\log n)$ manteniendo inmutabilidad referencial.
-2. **`List`:** Utilizado para representar secuencias ordenadas (resultado de Merge Sort) e historiales cronológicos de eventos inmutables donde se agregan nuevos eventos al inicio en tiempo $O(1)$.
-3. **`Tupla`:** Empleada en los contratos de retorno (`{:ok, resultado}` / `{:error, razon}`) permitiendo pattern matching determinista sin incurrir en excepciones.
-4. **`MapSet`:** Empleado en tres áreas críticas:
-   - *Ocupantes de albergue:* Garantiza en $O(1)$ que una persona no ingrese por duplicado y permite calcular la ocupación exacta con `MapSet.size/1`.
-   - *Permisos por rol:* Verifica en $O(1)$ la membresía de la operación dentro del conjunto permitido.
-   - *Similitud de características:* Permite calcular la intersección y unión de palabras en el coeficiente Jaccard.
-5. **`Structs` Anidados:** Permite modelar con tipado estricto la jerarquía `Zona -> [Sector] -> [PuntoAtencion]`, facilitando la navegación recursiva del árbol territorial.
-6. **`Keyword List`:** Empleada para el paso de opciones configurables y filtros opcionales (`[zona: "Z001", prioridad: :critica]`), integrándose de forma idiomática con Elixir.
+El requerimiento exige garantizar que un recurso no pueda asignarse si la necesidad no existe, si ya fue atendida/cancelada, o si la cantidad excede lo pendiente:
+
+1. **Validación Previa:** En `GestionarRecursos.asignar_recurso/4`, se consulta la necesidad a través de `PuertoSalidaNecesidades.consultar(id_necesidad)`.
+2. **Chequeo de Estado:** Se verifica que la necesidad esté en estado abierto (`:pendiente` o `:asignada`). Si está en `:atendida` o `:cancelada`, la operación es rechazada con `{:error, :necesidad_ya_cerrada}`.
+3. **Cálculo de Cuota:** Se valida que la cantidad a suministrar no sobrepase el saldo pendiente (`solicitada - asignada`).
+4. **Descuento Atómico:** Se solicita el descuento de inventario a `PuertoSalidaRecursos.asignar(...)` en el GenServer `GestorRecursos`.
+5. **Actualización de la Necesidad:** Si el recurso descuenta exitosamente, se invoca `PuertoSalidaNecesidades.asignar_suministro(...)` para incrementar `cantidad_asignada`.
+   - Si la necesidad queda 100% cubierta, transiciona automáticamente a `:atendida`.
+   - Si queda cubierta parcialmente, transiciona a `:asignada`.
+6. **Reversión Automática (Rollback):** Si la actualización de la necesidad fallase, el caso de uso devuelve inmediatamente el stock al recurso para evitar inconsistencias.
 
 ---
 
-## 7. Funciones Recursivas Obligatorias
+## 7. Justificación de Seguridad: Contraseñas con SHA-256 y Sal Criptográfica
 
-Todas las funciones recursivas fueron implementadas explícitamente sin recurrir a abstracciones como `Enum.reduce`:
+Para la sustentación académica, el almacenamiento de contraseñas se diseñó con las siguientes consideraciones:
+
+- **Algoritmo:** SHA-256 implementado directamente en el runtime de Erlang a través de `:crypto.hash(:sha256, @sal_segura <> clave)`.
+- **Sal de Aplicación:** Se incorpora un prefijo criptográfico constante (`@sal_segura = "emergencias_uq_2026_"`) para mitigar ataques basados en tablas precalculadas (Rainbow Tables).
+- **Justificación Didáctica y Técnica:** En entornos de producción corporativa se suele utilizar Argon2 o bcrypt. Sin embargo, para este proyecto académico y distribuido en Elixir puro:
+  1. No requiere compiladores externos de C (NIFs de C), garantizando portabilidad absoluta entre Windows, macOS y Linux sin fallos de compilación nativa.
+  2. Es completamente determinista y reproducible para evaluación inmediata del jurado.
+  3. No almacena jamás contraseñas en texto plano en `datos/usuarios.txt`.
+
+---
+
+## 8. Funciones Recursivas Obligatorias
+
+Todas las funciones recursivas fueron desarrolladas explícitamente sin utilizar abstracciones de orden superior como `Enum.reduce`:
 
 ### 1. `contar_puntos_atencion/1` (`Emergencias.Dominio.Reglas.EstadisticasZona`)
-- **Propósito:** Contar el total de puntos de atención distribuidos a lo largo de todos los sectores de una zona.
+- **Propósito:** Contar el total de puntos de atención a través de todos los sectores de una zona.
 - **Caso Base:** Lista vacía de sectores `[]` retorna el acumulador.
-- **Caso Recursivo:** Para `[%Sector{puntos_atencion: puntos} | resto]`, cuenta recursivamente los elementos de la lista de puntos, los suma al acumulador y continúa con el resto de sectores mediante recursión de cola.
+- **Caso Recursivo:** Para `[%Sector{puntos_atencion: puntos} | resto]`, suma recursivamente la longitud de los puntos al acumulador y procesa los sectores restantes con recursión de cola.
 
 ### 2. `sumar_personas_afectadas/1` (`Emergencias.Dominio.Reglas.EstadisticasZona`)
-- **Propósito:** Acumular el número de personas afectadas en todos los puntos de atención de la jerarquía territorial.
-- **Caso Base:** Lista vacía de sectores o puntos retorna el subtotal acumulado.
-- **Caso Recursivo:** Suma las `personas_afectadas` del punto actual al acumulador y procesa la cola de puntos y sectores mediante recursión de cola.
+- **Propósito:** Acumular el total de damnificados en todos los puntos de la jerarquía territorial.
+- **Caso Base:** Lista vacía retorna el subtotal acumulado.
+- **Caso Recursivo:** Suma las personas afectadas del punto actual y continúa recursivamente sobre la lista de puntos y sectores.
 
 ### 3. `buscar_punto_atencion/2` (`Emergencias.Dominio.Reglas.EstadisticasZona`)
-- **Propósito:** Búsqueda recursiva por código identificador dentro de la jerarquía anidada.
-- **Caso Base 1:** Lista de sectores vacía retorna `{:error, :no_encontrado}`.
-- **Caso Base 2:** Cabeza de lista de puntos con id coincidente retorna `{:ok, punto}`.
-- **Caso Recursivo:** Si el punto no coincide, continúa con la cola de puntos; si el sector se agota, avanza recursivamente al siguiente sector.
+- **Propósito:** Búsqueda recursiva por código identificador en la estructura anidada.
+- **Caso Base 1:** Sectores agotados retorna `{:error, :no_encontrado}`.
+- **Caso Base 2:** Coincidencia en cabeza de lista retorna `{:ok, punto}`.
+- **Caso Recursivo:** Continúa buscando en los puntos del sector o avanza recursivamente al siguiente sector.
 
 ### 4. `aplanar_jerarquia/1` (`Emergencias.Dominio.Reglas.EstadisticasZona`)
-- **Propósito:** Convertir el árbol `Zona -> Sectores -> Puntos` en una lista plana de puntos de atención.
-- **Caso Base:** Lista de sectores vacía retorna la lista acumulada invertida.
-- **Caso Recursivo:** Extrae recursivamente los puntos del sector de la cabeza, los agrega al acumulador y avanza a los sectores restantes.
+- **Propósito:** Transformar el árbol `Zona -> Sectores -> Puntos` en una lista plana.
+- **Caso Base:** Sectores agotados retorna la lista acumulada invertida.
+- **Caso Recursivo:** Extrae los puntos del sector de la cabeza y continúa recursivamente.
 
 ### 5. `sumar_cantidades/1` (`Emergencias.Dominio.Reglas.EstadisticasZona`)
 - **Propósito:** Sumar las cantidades numéricas de una lista histórica de movimientos de inventario.
-- **Caso Base:** Lista vacía de movimientos `[]` retorna el total acumulado.
-- **Caso Recursivo:** `[%MovimientoInventario{cantidad: cant} | resto]` suma `cant` al acumulador y continúa procesando el resto de la lista con recursión de cola.
+- **Caso Base:** Lista de movimientos vacía retorna el acumulador.
+- **Caso Recursivo:** Suma `movimiento.cantidad` al acumulador y continúa procesando la cola.
 
 ### 6. `ordenar_por_prioridad/1` (`Emergencias.Dominio.Reglas.Ordenamiento` - Merge Sort)
 - **Propósito:** Ordenar necesidades humanitarias por prioridad descendente (`critica` > `alta` > `media` > `baja`) desempatando por fecha más antigua (ascendente).
-- **Caso Base:** `[]` retorna `[]`; `[x]` retorna `[x]` (listas de tamaño 0 o 1 ya están ordenadas).
-- **Caso Recursivo:** Divide la lista en dos mitades aproximadamente iguales mediante `dividir_lista/1`, ordena recursivamente cada mitad con `ordenar_merge_sort/2`, y las mezcla con `mezclar_listas/3` respetando el predicado de precedencia.
+- **Caso Base:** Listas de tamaño 0 o 1 (`[]` o `[x]`) ya están ordenadas por definición.
+- **Caso Recursivo:** Divide la lista en mitades con `dividir_lista/1`, ordena cada mitad recursivamente y las combina con `mezclar_listas/3`.
 
 ---
 
-## 8. Concurrencia, Supervisión y Tolerancia a Fallos
+## 9. Supervisión OTP, Tolerancia a Fallos y Concurrencia
 
-### GenServers vs Procesos Puros con `receive`
-El sistema combina ambos enfoques según la responsabilidad:
-1. **GenServers serializadores:** (`GestorRecursos`, `GestorNecesidades`, etc.) Se encargan del estado compartido transaccional. En `GestorRecursos`, cada asignación o transferencia se ejecuta en un único `handle_call`, garantizando que la comprobación de existencia y el descuento ocurran de forma indivisible. Frente a peticiones simultáneas de 30L y 25L sobre 50L disponibles, la primera consume 30L (quedan 20L) y la segunda es rechazada atómicamente con `{:error, :cantidad_insuficiente}`.
-2. **Procesos puros con bucle `receive`:**
-   - `BitacoraActividad`: Proceso independiente no bloqueante que acumula eventos en cola y los remite a disco en segundo plano.
-   - Procesos `Albergue`: Cada albergue activo corre como un proceso independiente supervisado bajo un `DynamicSupervisor` (`SupervisorAlbergues`) y registrado en un `Registry` único por código.
+### Árbol de Supervisión Raíz (`SupervisorRaiz`)
+- Estrategia: `:one_for_one`.
+- Límites de reinicio ajustados según mejores prácticas del curso: `max_restarts: 3, max_seconds: 5`. Esto garantiza que bucles de error no se oculten y se detecten fallas de configuración inmediatamente.
 
-### Persistencia Transaccional
-- Archivos en texto plano en la carpeta `datos/` con formato delimitado por `|`.
-- El proceso `MotorPersistencia` es el único escritor autorizado sobre los archivos, serializando escrituras.
-- Las escrituras completas se realizan mediante un archivo temporal auxiliar (`archivo.txt.tmp`) seguido de un renombrado atómico (`File.rename/2`), evitando la corrupción de datos ante caídas intempestivas del nodo.
+### Supervisión Dinámica de Albergues
+- `SupervisorAlbergues` (`DynamicSupervisor`) gestiona los procesos independientes de cada albergue.
+- Cada albergue corre como un proceso concurrente puro con bucle `receive` recursivo, registrado en `Emergencias.RegistroAlbergues` (`Registry :unique`).
+- `AdaptadorAlbergues` implementa `PuertoSalidaAlbergues`, coordinando el DynamicSupervisor, Registry y la persistencia en disco de manera transparente para los casos de uso.
 
-### Tolerancia a Fallos
-El árbol de supervisión principal (`SupervisorRaiz`) utiliza la estrategia `:one_for_one`. Si un gestor es terminado abruptamente (`Process.exit(pid, :kill)`), el supervisor lo reinicia automáticamente y su callback de inicialización recupera el estado íntegro directamente desde los archivos de texto plano.
-
----
-
-## 9. Algoritmo de Similitud de Mascotas (`match_pets`)
-
-El algoritmo evalúa reportes de tipo `:perdida` contra reportes de tipo `:encontrada` en estado `:activa`:
-1. Si la especie difiere (ej. perro vs gato), el puntaje es 0 inmediatamente.
-2. Si la especie coincide, se suma una escala ponderada de 100 puntos:
-   - **Especie:** 25 puntos (obligatoria)
-   - **Color:** 20 puntos (coincidencia textual normalizada)
-   - **Tamaño:** 15 puntos (mismo tamaño)
-   - **Zona:** 20 puntos (misma zona geográfica)
-   - **Nombre:** 5 puntos (si ambos reportes lo conocen y coincide)
-   - **Características:** 15 puntos (coeficiente Jaccard sobre conjuntos de palabras: $\frac{|\text{Intersección}|}{|\text{Unión}|} \times 15$)
-3. Por defecto, parejas con puntaje $\ge 60$ se clasifican como `:posible_coincidencia` y se ordenan de mayor a menor puntuación.
+### Demostración de Concurrencia en Vivo (`priv/demostracion.exs`)
+El script ejecuta dos peticiones simultáneas utilizando `Task.async_stream`:
+- Recurso R001 tiene 50 litros disponibles.
+- Tarea 1 intenta asignar 30 L para N001.
+- Tarea 2 intenta asignar 25 L para N002.
+- Total requerido (55 L) > stock disponible (50 L).
+- El buzón del GenServer `GestorRecursos` serializa las operaciones: la primera petición descuenta 30 L (dejando 20 L) y la segunda es rechazada atómicamente por stock insuficiente.
+- Posteriormente, se ejecuta una transferencia de 10 L desde R002 a R001, y la asignación rechazada se reintenta exitosamente.
 
 ---
 
-## 10. Supuestos de Diseño
-
-1. **Identificadores Normalizados:** Para facilitar la interacción humana, si el usuario escribe identificadores informales como `need001` o `n1`, el analizador léxico los normaliza a su representación canónica (`N001`).
-2. **Autenticación sin Contraseñas en Texto Plano:** Las contraseñas se almacenan únicamente como hashes hexadecimales SHA-256 (`:crypto.hash(:sha256, clave)`).
-3. **Persistencia Desacoplada en Pruebas:** Los casos de uso aceptan inyección de dependencias (`[repositorio: RepositorioMemoria]`), permitiendo ejecutar pruebas unitarias ultra rápidas en memoria sin tocar el disco.
-
----
-
-## 11. Guion de Demostración Paso a Paso (Flujo de Laura)
-
-Para reproducir manualmente en la consola (`mix run priv/main.exs`):
-
-1. **Conexión de la Coordinadora:**
-   ```text
-   emergencias> connect Laura coord123 coordinador
-   [OK] Bienvenido/a, Laura. Conectado con rol: coordinador.
-   ```
-2. **Registro de Zonas y Albergue:**
-   ```text
-   Laura [coordinador]> register_zone Centro critico
-   [OK] Zona [Z001] 'Centro' registrada.
-   Laura [coordinador]> register_zone Norte medio
-   [OK] Zona [Z002] 'Norte' registrada.
-   Laura [coordinador]> register_shelter "Estadio San Jose" Z001 2
-   [OK] Albergue [ALB001] 'Estadio San Jose' registrado con capacidad 2.
-   ```
-3. **Ingreso de Recursos:**
-   ```text
-   Laura [coordinador]> register_resource agua litros 50 Z001
-   [OK] Recurso [R001] agua (50 litros) ingresado a Z001.
-   Laura [coordinador]> register_resource agua litros 20 Z002
-   [OK] Recurso [R002] agua (20 litros) ingresado a Z002.
-   ```
-4. **Reporte de Necesidades:**
-   ```text
-   Laura [coordinador]> connect Pedro pass123 ciudadano
-   Pedro [ciudadano]> register_need Z001 agua 30 critica
-   [OK] Necesidad [N001] reportada con prioridad critica.
-   Pedro [ciudadano]> connect Maria pass456 ciudadano
-   Maria [ciudadano]> register_need Z001 agua 25 alta
-   [OK] Necesidad [N002] reportada con prioridad alta.
-   ```
-5. **Conflicto Concurrente y Asignación Atómica:**
-   ```text
-   Maria [ciudadano]> connect Laura coord123 coordinador
-   Laura [coordinador]> assign_resource R001 N001 30
-   [OK] Asignados 30 litros de [R001] a [N001]. Stock restante: 20
-   Laura [coordinador]> assign_resource R001 N002 25
-   [ERROR] Existencias insuficientes en inventario para atender la solicitud.
-   Laura [coordinador]> transfer_resource R002 R001 10
-   [OK] Transferencia exitosa: 10 transferidos de [R002] a [R001].
-   Laura [coordinador]> assign_resource R001 N002 25
-   [OK] Asignados 25 litros de [R001] a [N002]. Stock restante: 5
-   ```
-6. **Familiares y Mensajería:**
-   ```text
-   Laura [coordinador]> connect Pedro pass123 ciudadano
-   Pedro [ciudadano]> report_person 10949001 "Carlos Lopez"
-   [OK] Persona [P001] Carlos Lopez (Doc: 10949001) reportada como reportada.
-   Pedro [ciudadano]> connect Maria pass456 ciudadano
-   Maria [ciudadano]> send_family_message 10949001 "Estamos todos bien en el refugio"
-   [OK] Mensaje familiar [M001] registrado para documento 10949001.
-   ```
-7. **Control de Aforo en Albergues:**
-   ```text
-   Maria [ciudadano]> connect Laura coord123 coordinador
-   Laura [coordinador]> register_entry ALB001 10949001
-   [OK] Ingreso registrado: 10949001 alojado en albergue [ALB001].
-   Laura [coordinador]> register_entry ALB001 10949002
-   [OK] Ingreso registrado: 10949002 alojado en albergue [ALB001].
-   Laura [coordinador]> register_entry ALB001 10949003
-   [ERROR] El albergue ha alcanzado su capacidad máxima permitida.
-   ```
-8. **Mascotas y Similitud:**
-   ```text
-   Laura [coordinador]> report_pet perdida perro dorado mediano Z001 Rocky
-   [OK] Mascota [MC001] reportada como perdida (perro dorado).
-   Laura [coordinador]> report_pet encontrada perro dorado mediano Z001 Rocky
-   [OK] Mascota [MC002] reportada como encontrada (perro dorado).
-   Laura [coordinador]> match_pets 60
-   COINCIDENCIAS IDENTIFICADAS:
-     - Coincidencia [Puntaje: 85/100]:
-         Perdida:    [MC001] perro dorado (mediano), Zona: Z001, Nombre: 'Rocky'
-         Encontrada: [MC002] perro dorado (mediano), Zona: Z001, Nombre: 'Rocky'
-   ```
-9. **Resumen Ejecutivo y Suministros Críticos:**
-   ```text
-   Laura [coordinador]> summary
-   Laura [coordinador]> critical_resources 15
-   Laura [coordinador]> pending_needs
-   Laura [coordinador]> exit
-   ```
-
----
-
-## 12. Checklist de Requisitos Cumplidos
+## 10. Checklist de Requisitos Cumplidos
 
 - [x] **Convención de Nombres:** 100% funciones con verbos en infinitivo en español (`registrar/2`, `validar/1`, `asignar/3`, `poder_transitar?/2`, etc.). Callbacks OTP delegan de inmediato a funciones en infinitivo.
 - [x] **Línea Única en Main:** `priv/main.exs` contiene exactamente 1 línea sin funciones ni lambdas.
-- [x] **Arquitectura Hexagonal Estricta:** Dominio aislado de infraestructura y aplicación; dependencias hacia adentro.
-- [x] **Funciones Puras:** Retornos canónicos `{:ok, _}` o `{:error, _}`; cero excepciones de negocio.
-- [x] **Validación de Entradas:** Validación exhaustiva antes de alterar cualquier estado.
-- [x] **Estructuras de Datos Justificadas:** `Map`, `List`, `Tupla`, `MapSet`, `Struct` anidados y `Keyword`.
-- [x] **Recursividad Obligatoria:** 6 funciones recursivas implementadas sin `Enum.reduce` (casos base y recursivo documentados).
-- [x] **Ordenamiento Propio:** Merge Sort recursivo para priorizar necesidades (`prioridad` desc, `fecha` asc).
-- [x] **Similitud Ponderada de Mascotas:** Algoritmo ponderado de 0 a 100 con coeficiente Jaccard.
-- [x] **Concurrencia OTP:** GenServers con buzón atómico resolviendo el conflicto 30L + 25L sobre 50L.
-- [x] **Procesos Puros con `receive`:** `BitacoraActividad` y procesos `Albergue` con bucle recursivo.
-- [x] **Supervisión Dinámica:** `SupervisorAlbergues` (`DynamicSupervisor`) y `Registry`.
-- [x] **Persistencia en Texto Plano:** Archivos `.txt` con delimitador `|`, escape seguro y renombrado atómico.
-- [x] **Pruebas Completas ExUnit:** 58 pruebas pasando en verde (incluyendo 100 tareas con `Task.async_stream`).
-- [x] **Compilación Limpia:** `mix compile --warnings-as-errors` sin una sola advertencia.
-- [x] **Diagramas Mermaid:** `modulos.mmd`, `modelo_datos.mmd`, `secuencia.mmd` y `arbol_otp.mmd`.
-- [x] **Demostración Automatizada:** `priv/demostracion.exs` ejecutando el flujo completo de Laura.
-
+- [x] **Arquitectura Hexagonal Estricta:** Dominio y aplicación 100% aislados de infraestructura. Cero llamadas a `whereis` y cero referencias a `Infraestructura` en la capa de aplicación.
+- [x] **7 Puertos de Salida Especializados:** Implementados por los gestores de infraestructura e inyectados vía configuración.
+- [x] **Funciones Puras:** Retornos canónicos `{:ok, _}` o `{:error, _}`; cero excepciones no controladas en reglas de negocio.
+- [x] **Validación Exhaustiva de Entradas:** Validación de tipos, enteros, enums y permisos antes de modificar el estado.
+- [x] **Transacciones Atómicas Recurso-Necesidad:** Validación de necesidad abierta, control de sobre-asignación, reversión automática y actualización de estado.
+- [x] **Estructuras de Datos Justificadas:** `Map`, `List`, `Tupla`, `MapSet`, `Struct` anidados y `Keyword List`.
+- [x] **Recursividad Obligatoria:** 6 funciones recursivas puras implementadas sin `Enum.reduce`.
+- [x] **Ordenamiento Propio:** Merge Sort recursivo para priorizar necesidades humanitarias.
+- [x] **Similitud Ponderada de Mascotas:** Algoritmo ponderado (0-100) con coeficiente Jaccard.
+- [x] **Concurrencia OTP:** GenServers serializadores y procesos puros con bucle `receive` recursivo.
+- [x] **Supervisión Dinámica:** `SupervisorAlbergues` (`DynamicSupervisor`) y `Registry :unique`.
+- [x] **Persistencia Atómica en Texto Plano:** Archivos `.txt` con escritura temporal y renombrado atómico tolerante a líneas corruptas.
+- [x] **Pruebas Completas ExUnit:** 74 pruebas unitarias, de integración y de concurrencia pasando al 100%.
+- [x] **Compilación Limpia:** `mix compile --warnings-as-errors` con 0 advertencias y 0 errores.
+- [x] **Diagramas Mermaid:** `modulos.mmd`, `modelo_datos.mmd`, `secuencia.mmd` y `arbol_otp.mmd` actualizados.
+- [x] **Demostración Automatizada Idempotente:** `priv/demostracion.exs` con carrera concurrente real mediante `Task.async_stream`.

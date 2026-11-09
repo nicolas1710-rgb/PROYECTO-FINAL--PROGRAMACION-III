@@ -1,5 +1,5 @@
 flowchart TD
-    %% ARQUITECTURA HEXAGONAL DEL SISTEMA DE EMERGENCIAS
+    %% ARQUITECTURA HEXAGONAL ESTRICTA DEL SISTEMA DE EMERGENCIAS
     subgraph Infraestructura_Entrada["INFRAESTRUCTURA - ADAPTADORES DE ENTRADA"]
         Consola["Consola CLI (priv/main.exs)"]
         Analizador["AnalizadorComandos"]
@@ -30,15 +30,22 @@ flowchart TD
             CU_Res["GenerarResumenes"]
         end
 
-        subgraph Puertos_Salida["Puertos de Salida (Behaviours)"]
-            PS_Repo["Repositorio"]
+        subgraph Puertos_Salida["Puertos de Salida (Behaviours Especializados)"]
+            PS_Usr["PuertoSalidaUsuarios"]
+            PS_Zon["PuertoSalidaZonas"]
+            PS_Nec["PuertoSalidaNecesidades"]
+            PS_Rec["PuertoSalidaRecursos"]
+            PS_Per["PuertoSalidaPersonas"]
+            PS_Mas["PuertoSalidaMascotas"]
+            PS_Alb["PuertoSalidaAlbergues"]
             PS_Bit["Bitacora"]
             PS_Reloj["Reloj"]
             PS_GenId["GeneradorId"]
+            PS_Repo["Repositorio (Modo Test / Archivo)"]
         end
     end
 
-    subgraph Dominio_Nucleo["DOMINIO PURO - NÚCLEO INMUTABLE"]
+    subgraph Dominio_Nucleo["DOMINIO PURO - NÚCLEO INMUTABLE (Sin IO, Sin Procesos)"]
         subgraph Modelos["Modelos (Structs con Enforce Keys)"]
             M_Usuario["Usuario"]
             M_Zona["Zona"]
@@ -63,30 +70,32 @@ flowchart TD
             R_Inv["Inventario (Atomicidad de Stock)"]
             R_Ocup["Ocupacion (Cupos y Aforo)"]
             R_Sim["SimilitudMascotas (Ponderado Jaccard)"]
-            R_Est["EstadisticasZona (Recursión Obligatoria)"]
+            R_Est["EstadisticasZona (Recursión Pura)"]
         end
     end
 
     subgraph Infraestructura_Salida["INFRAESTRUCTURA - ADAPTADORES DE SALIDA Y PROCESOS OTP"]
-        subgraph Concurrencia_OTP["Procesos OTP"]
-            G_Usr["GestorUsuarios (GenServer)"]
-            G_Zon["GestorZonas (GenServer)"]
-            G_Nec["GestorNecesidades (GenServer)"]
-            G_Rec["GestorRecursos (GenServer Clave)"]
-            G_Per["GestorPersonas (GenServer)"]
-            G_Mas["GestorMascotas (GenServer)"]
-            P_Bit["BitacoraActividad (Bucle Recursivo)"]
-            P_Alb["Albergue (Proceso Puro DynamicSupervisor)"]
+        subgraph Concurrencia_OTP["Procesos OTP y Adaptadores"]
+            G_Usr["GestorUsuarios\n(implementa PuertoSalidaUsuarios)"]
+            G_Zon["GestorZonas\n(implementa PuertoSalidaZonas)"]
+            G_Nec["GestorNecesidades\n(implementa PuertoSalidaNecesidades)"]
+            G_Rec["GestorRecursos\n(implementa PuertoSalidaRecursos)"]
+            G_Per["GestorPersonas\n(implementa PuertoSalidaPersonas)"]
+            G_Mas["GestorMascotas\n(implementa PuertoSalidaMascotas)"]
+            A_Alb["AdaptadorAlbergues\n(implementa PuertoSalidaAlbergues)"]
+            Sup_Alb["SupervisorAlbergues\n(DynamicSupervisor)"]
+            P_Alb["Albergue\n(Proceso Puro con bucle receive)"]
+            P_Bit["BitacoraActividad\n(Proceso Puro con bucle receive)"]
         end
 
-        subgraph Persistencia_Archivos["Persistencia en Texto Plano (.txt)"]
+        subgraph Persistencia_Archivos["Persistencia en Disco (.txt)"]
             MotorPers["MotorPersistencia (GenServer Escritor Atómico)"]
-            Almacen["AlmacenArchivo (Adaptador Repositorio)"]
-            Codif["CodificadorTexto (Delimitador Pipe Seguro)"]
+            Codif["CodificadorTexto (Formato Pipe Seguro)"]
+            Almacen["AlmacenArchivo (implementa Repositorio)"]
         end
     end
 
-    %% Flujos de llamada
+    %% Relaciones entre capas (Hacia adentro estrictamente)
     Consola --> Analizador
     Analizador --> Despachador
     Despachador --> Casos_Uso
@@ -94,12 +103,23 @@ flowchart TD
 
     Casos_Uso --> Reglas
     Casos_Uso --> Modelos
-    Casos_Uso --> Concurrencia_OTP
-    Casos_Uso --> PS_Repo
+    Casos_Uso --> Puertos_Salida
 
-    Concurrencia_OTP --> Reglas
+    %% Implementaciones de Puertos de Salida
+    G_Usr -. implementa .-> PS_Usr
+    G_Zon -. implementa .-> PS_Zon
+    G_Nec -. implementa .-> PS_Nec
+    G_Rec -. implementa .-> PS_Rec
+    G_Per -. implementa .-> PS_Per
+    G_Mas -. implementa .-> PS_Mas
+    A_Alb -. implementa .-> PS_Alb
+    P_Bit -. implementa .-> PS_Bit
+    Almacen -. implementa .-> PS_Repo
+
+    %% Infraestructura interna
+    A_Alb --> Sup_Alb
+    A_Alb --> MotorPers
+    Sup_Alb -. supervisa .-> P_Alb
     Concurrencia_OTP --> MotorPers
-    PS_Repo --> Almacen
-    Almacen --> MotorPers
+    Concurrencia_OTP --> Reglas
     MotorPers --> Codif
-

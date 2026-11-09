@@ -22,24 +22,44 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   def validar_texto_no_vacio(_), do: {:error, :texto_vacio}
 
   @doc """
+  Validar y parsear un número entero a partir de un entero o una cadena de texto.
+  Previene caídas por ArgumentError al evitar conversiones inseguras.
+  """
+  @spec validar_entero(any()) :: {:ok, integer()} | {:error, :entero_invalido}
+  def validar_entero(numero) when is_integer(numero), do: {:ok, numero}
+
+  def validar_entero(texto) when is_binary(texto) do
+    case Integer.parse(String.trim(texto)) do
+      {numero, ""} -> {:ok, numero}
+      _ -> {:error, :entero_invalido}
+    end
+  end
+
+  def validar_entero(_), do: {:error, :entero_invalido}
+
+  @doc """
   Validar que un número entero sea estrictamente positivo (> 0).
   """
   @spec validar_cantidad_positiva(any()) :: {:ok, pos_integer()} | {:error, :cantidad_invalida}
-  def validar_cantidad_positiva(numero) when is_integer(numero) and numero > 0 do
-    {:ok, numero}
+  def validar_cantidad_positiva(valor) do
+    with {:ok, entero} <- validar_entero(valor) do
+      if entero > 0, do: {:ok, entero}, else: {:error, :cantidad_invalida}
+    else
+      _ -> {:error, :cantidad_invalida}
+    end
   end
-
-  def validar_cantidad_positiva(_), do: {:error, :cantidad_invalida}
 
   @doc """
   Validar que un número entero sea mayor o igual a cero (>= 0).
   """
   @spec validar_cantidad_no_negativa(any()) :: {:ok, non_neg_integer()} | {:error, :cantidad_negativa}
-  def validar_cantidad_no_negativa(numero) when is_integer(numero) and numero >= 0 do
-    {:ok, numero}
+  def validar_cantidad_no_negativa(valor) do
+    with {:ok, entero} <- validar_entero(valor) do
+      if entero >= 0, do: {:ok, entero}, else: {:error, :cantidad_negativa}
+    else
+      _ -> {:error, :cantidad_negativa}
+    end
   end
-
-  def validar_cantidad_no_negativa(_), do: {:error, :cantidad_negativa}
 
   @doc """
   Validar que un nivel de gravedad corresponda a uno de los valores permitidos.
@@ -50,13 +70,13 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   end
 
   def validar_nivel_gravedad(nivel) when is_binary(nivel) do
-    nivel
-    |> String.trim()
-    |> String.downcase()
-    |> String.to_existing_atom()
-    |> validar_nivel_gravedad()
-  rescue
-    ArgumentError -> {:error, :nivel_invalido}
+    case String.downcase(String.trim(nivel)) do
+      "critico" -> {:ok, :critico}
+      "alto" -> {:ok, :alto}
+      "medio" -> {:ok, :medio}
+      "bajo" -> {:ok, :bajo}
+      _ -> {:error, :nivel_invalido}
+    end
   end
 
   def validar_nivel_gravedad(_), do: {:error, :nivel_invalido}
@@ -70,13 +90,13 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   end
 
   def validar_prioridad(prioridad) when is_binary(prioridad) do
-    prioridad
-    |> String.trim()
-    |> String.downcase()
-    |> String.to_existing_atom()
-    |> validar_prioridad()
-  rescue
-    ArgumentError -> {:error, :prioridad_invalida}
+    case String.downcase(String.trim(prioridad)) do
+      "critica" -> {:ok, :critica}
+      "alta" -> {:ok, :alta}
+      "media" -> {:ok, :media}
+      "baja" -> {:ok, :baja}
+      _ -> {:error, :prioridad_invalida}
+    end
   end
 
   def validar_prioridad(_), do: {:error, :prioridad_invalida}
@@ -90,13 +110,13 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   end
 
   def validar_rol(rol) when is_binary(rol) do
-    rol
-    |> String.trim()
-    |> String.downcase()
-    |> String.to_existing_atom()
-    |> validar_rol()
-  rescue
-    ArgumentError -> {:error, :rol_invalido}
+    case String.downcase(String.trim(rol)) do
+      "ciudadano" -> {:ok, :ciudadano}
+      "voluntario" -> {:ok, :voluntario}
+      "coordinador" -> {:ok, :coordinador}
+      "administrador" -> {:ok, :administrador}
+      _ -> {:error, :rol_invalido}
+    end
   end
 
   def validar_rol(_), do: {:error, :rol_invalido}
@@ -110,13 +130,12 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   end
 
   def validar_tamano_mascota(tamano) when is_binary(tamano) do
-    tamano
-    |> String.trim()
-    |> String.downcase()
-    |> String.to_existing_atom()
-    |> validar_tamano_mascota()
-  rescue
-    ArgumentError -> {:error, :tamano_invalido}
+    case String.downcase(String.trim(tamano)) do
+      "pequeno" -> {:ok, :pequeno}
+      "mediano" -> {:ok, :mediano}
+      "grande" -> {:ok, :grande}
+      _ -> {:error, :tamano_invalido}
+    end
   end
 
   def validar_tamano_mascota(_), do: {:error, :tamano_invalido}
@@ -130,13 +149,11 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
   end
 
   def validar_tipo_reporte_mascota(tipo) when is_binary(tipo) do
-    tipo
-    |> String.trim()
-    |> String.downcase()
-    |> String.to_existing_atom()
-    |> validar_tipo_reporte_mascota()
-  rescue
-    ArgumentError -> {:error, :tipo_reporte_invalido}
+    case String.downcase(String.trim(tipo)) do
+      "perdida" -> {:ok, :perdida}
+      "encontrada" -> {:ok, :encontrada}
+      _ -> {:error, :tipo_reporte_invalido}
+    end
   end
 
   def validar_tipo_reporte_mascota(_), do: {:error, :tipo_reporte_invalido}
@@ -201,7 +218,8 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
          codigo_zona: zona,
          tipo_recurso: recurso,
          cantidad_solicitada: cant,
-         prioridad: prioridad
+         prioridad: prioridad,
+         descripcion: Map.get(params, :descripcion, "")
        }}
     end
   end
@@ -215,8 +233,12 @@ defmodule Emergencias.Dominio.Reglas.Validaciones do
          {:ok, unidad} <- validar_texto_no_vacio(Map.get(params, :unidad_medida)),
          {:ok, cant} <- validar_cantidad_positiva(Map.get(params, :cantidad_total)),
          {:ok, zona} <- validar_texto_no_vacio(Map.get(params, :codigo_zona)) do
+      nombre = Map.get(params, :nombre, tipo)
+
       {:ok,
        %{
+         id: Map.get(params, :id),
+         nombre: nombre,
          tipo: tipo,
          unidad_medida: unidad,
          cantidad_total: cant,

@@ -46,7 +46,7 @@ defmodule Emergencias.Infraestructura.Entrada.Consola do
   def procesar_linea(linea, usuario_actual) do
     case AnalizadorComandos.analizar_linea(linea) do
       {:ok, comando, argumentos} ->
-        case DespachadorComandos.despachar_comando(comando, argumentos, usuario_actual) do
+        case DespachadorComandos.despachar(comando, argumentos, usuario_actual) do
           {:ok, salida, nuevo_usuario} ->
             mostrar_mensaje(salida)
             ejecutar_bucle(nuevo_usuario)

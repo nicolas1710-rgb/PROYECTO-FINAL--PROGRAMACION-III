@@ -1,6 +1,15 @@
 # Demostración Automatizada del Sistema de Emergencias (Flujo Completo)
 # Reproduce paso a paso el caso de estudio sin definir funciones.
 
+# Reiniciar datos previos en disco y árbol de supervisión para que la demostración sea 100% reproducible
+File.mkdir_p!("datos")
+Enum.each(Path.wildcard("datos/*.txt"), fn archivo -> File.write!(archivo, "") end)
+if Process.whereis(Emergencias.SupervisorRaiz) do
+  Supervisor.stop(Emergencias.SupervisorRaiz)
+  Process.sleep(100)
+end
+{:ok, _} = Emergencias.Application.iniciar_supervision()
+
 alias Emergencias.Infraestructura.Entrada.DespachadorComandos
 
 IO.puts("\n=== 1. CONEXIÓN DE LAURA (COORDINADORA) ===")
@@ -34,17 +43,38 @@ IO.puts(out)
 {:ok, out, _} = DespachadorComandos.despachar_comando(:register_need, ["Z001", "agua", "25", "alta"], maria)
 IO.puts(out)
 
-IO.puts("\n=== 5. ASIGNACIÓN ATÓMICA Y CONFLICTO CONCURRENTE RESUELTO ===")
-{:ok, out, laura} = DespachadorComandos.despachar_comando(:assign_resource, ["R001", "N001", "30"], laura)
-IO.puts(out)
+IO.puts("\n=== 5. ASIGNACIÓN ATÓMICA Y CONFLICTO CONCURRENTE EN VIVO ===")
+IO.puts("Stock inicial R001: 50 litros de agua.")
+IO.puts("Lanzando 2 tareas simultáneas (Task.async_stream) intentando asignar 30 L (N001) y 25 L (N002)...")
+IO.puts("Total requerido (55 L) supera el stock disponible (50 L).\n")
 
-{:error, err, laura} = DespachadorComandos.despachar_comando(:assign_resource, ["R001", "N002", "25"], laura)
-IO.puts(err)
+resultados_concurrencia =
+  [{"N001", "30"}, {"N002", "25"}]
+  |> Task.async_stream(fn {id_nec, cant} ->
+    DespachadorComandos.despachar_comando(:assign_resource, ["R001", id_nec, cant], laura)
+  end)
+  |> Enum.map(fn {:ok, res} -> res end)
 
+Enum.each(resultados_concurrencia, fn
+  {:ok, msg, _} ->
+    IO.puts("[CARRERA GANADA - PROCESADO]: " <> msg)
+
+  {:error, err, _} ->
+    IO.puts("[CARRERA RECHAZADA - STOCK INSUFICIENTE]: " <> err)
+end)
+
+{id_fallida, cant_fallida} =
+  case resultados_concurrencia do
+    [{:ok, _, _}, {:error, _, _}] -> {"N002", "25"}
+    [{:error, _, _}, {:ok, _, _}] -> {"N001", "30"}
+  end
+
+IO.puts("\n--- Transferencia atómica de 10 L desde R002 a R001 para solventar el déficit ---")
 {:ok, out, laura} = DespachadorComandos.despachar_comando(:transfer_resource, ["R002", "R001", "10"], laura)
 IO.puts(out)
 
-{:ok, out, laura} = DespachadorComandos.despachar_comando(:assign_resource, ["R001", "N002", "25"], laura)
+IO.puts("\n--- Reintento de asignación para la necesidad #{id_fallida} (#{cant_fallida} L) ---")
+{:ok, out, laura} = DespachadorComandos.despachar_comando(:assign_resource, ["R001", id_fallida, cant_fallida], laura)
 IO.puts(out)
 
 IO.puts("\n=== 6. FAMILIARES Y MENSAJERÍA ===")

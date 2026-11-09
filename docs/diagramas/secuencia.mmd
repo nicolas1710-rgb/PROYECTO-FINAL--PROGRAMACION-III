@@ -1,50 +1,60 @@
 sequenceDiagram
     autonumber
-    %% FLUJO CONCURRENTE: ASIGNACIÓN ATÓMICA DE RECURSOS (30L vs 25L sobre 50L)
+    %% FLUJO CONCURRENTE Y ATÓMICO: ASIGNACIÓN DE RECURSOS A NECESIDADES
 
     actor Laura as Coordinadora (Laura)
-    actor Carlos as Voluntario (Carlos)
+    actor Carlos as Coordinador Auxiliar (Carlos)
+    participant Desp as DespachadorComandos
     participant CU as GestionarRecursos (Caso de Uso)
-    participant GR as GestorRecursos (GenServer OTP)
-    participant Reglas as Inventario (Regla Pura)
-    participant MP as MotorPersistencia (GenServer Archivo)
-    participant Disco as datos/recursos.txt & movimientos.txt
+    participant PS_Nec as PuertoSalidaNecesidades (GestorNecesidades)
+    participant PS_Rec as PuertoSalidaRecursos (GestorRecursos OTP)
+    participant Reglas as Inventario / Transiciones (Dominio Puro)
+    participant MP as MotorPersistencia (GenServer Escritura)
 
-    Note over GR: Estado Inicial: R001 tiene 50 litros disponibles
+    Note over PS_Rec: Estado Inicial: R001 tiene 50 L disponibles en inventario
+    Note over PS_Nec: Estado Inicial: N001 pide 30 L (pendiente), N002 pide 25 L (pendiente)
 
-    par Peticiones Simultáneas en Concurrencia
-        Laura->>CU: assign_resource("R001", "N001", 30)
-        CU->>GR: GenServer.call({:asignar, "R001", "N001", 30, "Laura"})
+    par Solicitudes Concurrentes (Task.async_stream)
+        Laura->>Desp: assign_resource("R001", "N001", 30)
+        Desp->>CU: asignar_recurso("R001", "N001", 30, Laura)
     and
-        Carlos->>CU: assign_resource("R001", "N002", 25)
-        CU->>GR: GenServer.call({:asignar, "R001", "N002", 25, "Carlos"})
+        Carlos->>Desp: assign_resource("R001", "N002", 25)
+        Desp->>CU: asignar_recurso("R001", "N002", 25, Carlos)
     end
 
-    Note over GR: El buzón de mensajes serializa: procesa la petición de Laura primero
+    Note over CU, PS_Nec: 1. Validación de Necesidad: abierta y cantidad no excede lo pendiente
+    CU->>PS_Nec: consultar("N001")
+    PS_Nec-->>CU: {:ok, N001_pendiente_30}
 
-    %% Procesamiento Petición Laura (30 litros)
+    Note over PS_Rec: El buzón de mensajes del GenServer serializa el acceso al stock
+
+    %% Tramitación de la petición de Laura (30 L)
     rect rgb(240, 255, 240)
-        Note over GR, Reglas: 1. Evaluación Petición Laura (30 litros)
-        GR->>Reglas: descontar/asignar(R001, 30, ...)
-        Reglas-->>GR: {:ok, {R001_disp_20, MOV001}}
-        GR->>MP: guardar(:recursos, R001_disp_20)
-        MP->>Disco: Escritura atómica (temp + rename)
-        GR->>MP: anexar(:movimientos, MOV001)
-        MP->>Disco: Append al final de movimientos.txt
-        GR-->>CU: {:ok, {R001_actualizado, MOV001}}
-        CU-->>Laura: [OK] Asignados 30 litros de R001 a N001. Restan: 20
+        Note over CU, PS_Rec: 2. Descuento atómico de Stock para Laura (30 L)
+        CU->>PS_Rec: asignar("R001", "N001", 30, Laura)
+        PS_Rec->>Reglas: Inventario.asignar(R001, 30, ...)
+        Reglas-->>PS_Rec: {:ok, {R001_disp_20, MOV001}}
+        PS_Rec->>MP: guardar(:recursos, R001_disp_20)
+        PS_Rec->>MP: anexar(:movimientos, MOV001)
+        PS_Rec-->>CU: {:ok, {R001_disp_20, MOV001}}
+
+        Note over CU, PS_Nec: 3. Actualización de Necesidad N001 (cantidad_asignada = 30 -> :atendida)
+        CU->>PS_Nec: asignar_suministro("N001", 30, Laura)
+        PS_Nec-->>CU: {:ok, N001_atendida}
+        CU-->>Desp: {:ok, R001_actualizado}
+        Desp-->>Laura: [OK] Asignados 30 litros de [R001] a [N001]. Stock restante: 20
     end
 
-    Note over GR: Estado en memoria actualizado: R001 tiene 20 litros disponibles
-
-    %% Procesamiento Petición Carlos (25 litros)
+    %% Tramitación concurrente de la petición de Carlos (25 L)
     rect rgb(255, 240, 240)
-        Note over GR, Reglas: 2. Evaluación Petición Carlos (25 litros)
-        GR->>Reglas: descontar/asignar(R001, 25, ...)
+        Note over CU, PS_Rec: 4. Descuento atómico de Stock para Carlos (25 L)
+        CU->>PS_Nec: consultar("N002")
+        PS_Nec-->>CU: {:ok, N002_pendiente_25}
+        CU->>PS_Rec: asignar("R001", "N002", 25, Carlos)
+        PS_Rec->>Reglas: Inventario.asignar(R001, 25, ...)
         Note over Reglas: Validación de Saldo: disponible (20) < solicitado (25)
-        Reglas-->>GR: {:error, :cantidad_insuficiente}
-        Note over GR: El estado en memoria NO se modifica (permanece en 20L)
-        GR-->>CU: {:error, :cantidad_insuficiente}
-        CU-->>Carlos: [ERROR] Existencias insuficientes en inventario
+        Reglas-->>PS_Rec: {:error, :stock_insuficiente}
+        PS_Rec-->>CU: {:error, :stock_insuficiente}
+        CU-->>Desp: {:error, :stock_insuficiente}
+        Desp-->>Carlos: [ERROR] Existencias insuficientes en inventario para atender la solicitud.
     end
-

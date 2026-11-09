@@ -1,6 +1,22 @@
-ACT001|Laura|registro|Usuario creado con rol coordinador|2026-11-09T00:59:19.519000Z
-ACT002|Laura|registrar_albergue|Albergue ALB001 registrado|2026-11-09T00:59:19.575000Z
-ACT003|Pedro|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.607000Z
-ACT004|Maria|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.615000Z
-ACT005|Pedro|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.692000Z
-ACT006|Maria|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.702000Z
+ACT001|Laura|login|Conexión exitosa|2026-11-09T03:48:14.739000Z
+ACT002|Laura|registrar_zona|Zona Z001 creada|2026-11-09T03:48:14.822000Z
+ACT003|Laura|registrar_zona|Zona Z002 creada|2026-11-09T03:48:14.845000Z
+ACT004|Laura|registrar_albergue|Albergue ALB001 registrado|2026-11-09T03:48:14.894000Z
+ACT005|Laura|registrar_recurso|Recurso R001 ingresado|2026-11-09T03:48:14.922000Z
+ACT006|Laura|registrar_recurso|Recurso R002 ingresado|2026-11-09T03:48:14.937000Z
+ACT007|Pedro|login|Conexión exitosa|2026-11-09T03:48:14.973000Z
+ACT008|Pedro|registrar_necesidad|Necesidad N001 reportada|2026-11-09T03:48:14.994000Z
+ACT009|Maria|login|Conexión exitosa|2026-11-09T03:48:15.006000Z
+ACT010|Maria|registrar_necesidad|Necesidad N002 reportada|2026-11-09T03:48:15.022000Z
+ACT011|Laura|asignar_recurso|Asignados 30 de R001 a N001|2026-11-09T03:48:15.041000Z
+ACT012|Laura|transferir_recurso|10 de R002 a R001|2026-11-09T03:48:15.077000Z
+ACT013|Laura|asignar_recurso|Asignados 25 de R001 a N002|2026-11-09T03:48:15.116000Z
+ACT014|Pedro|login|Conexión exitosa|2026-11-09T03:48:15.145000Z
+ACT015|Pedro|reportar_persona|Persona 10949001 reportada|2026-11-09T03:48:15.150000Z
+ACT016|Maria|login|Conexión exitosa|2026-11-09T03:48:15.161000Z
+ACT017|Maria|enviar_mensaje|Mensaje M001 a 10949001|2026-11-09T03:48:15.161000Z
+ACT018|Laura|entrada_albergue|Ingreso 10949001 a ALB001|2026-11-09T03:48:15.166000Z
+ACT019|Laura|actualizar_persona|10949001 -> en_albergue|2026-11-09T03:48:15.182000Z
+ACT020|Laura|entrada_albergue|Ingreso 10949002 a ALB001|2026-11-09T03:48:15.196000Z
+ACT021|Pedro|reportar_mascota|Mascota MC001 reportada|2026-11-09T03:48:15.224000Z
+ACT022|Maria|reportar_mascota|Mascota MC002 reportada|2026-11-09T03:48:15.238000Z

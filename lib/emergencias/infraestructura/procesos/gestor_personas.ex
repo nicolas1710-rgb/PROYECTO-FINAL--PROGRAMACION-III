@@ -1,9 +1,12 @@
 defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
   @moduledoc """
   GenServer para la administración de personas damnificadas y mensajería familiar en memoria.
+  Implementa el puerto de salida PuertoSalidaPersonas.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaPersonas
 
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.{Mensaje, Persona}
@@ -50,6 +53,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
     GenServer.call(__MODULE__, {:reportar, params, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: reportar persona."
+  @spec reportar(map(), String.t()) :: {:ok, Persona.t()} | {:error, atom()}
+  def reportar(params, usuario), do: reportar_persona(params, usuario)
+
   @doc """
   Buscar persona por documento de identidad.
   """
@@ -58,6 +66,12 @@ defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
     GenServer.call(__MODULE__, {:buscar, documento})
   end
 
+  @impl true
+  @doc "Implementación del puerto: buscar persona."
+  @spec buscar(String.t()) :: {:ok, Persona.t()} | {:error, atom()}
+  def buscar(documento), do: buscar_persona(documento)
+
+  @impl true
   @doc """
   Enviar mensaje familiar.
   """
@@ -66,6 +80,7 @@ defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
     GenServer.call(__MODULE__, {:enviar_mensaje, documento, contenido, remitente})
   end
 
+  @impl true
   @doc """
   Listar mensajes recibidos para una persona.
   """
@@ -83,6 +98,15 @@ defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
     GenServer.call(__MODULE__, {:actualizar, documento, nuevo_estado, extras, usuario})
   end
 
+  @impl true
+  @doc "Implementación del puerto: actualizar estado y ubicación de persona."
+  @spec actualizar_estado(String.t(), atom(), map(), String.t()) ::
+          {:ok, Persona.t()} | {:error, atom()}
+  def actualizar_estado(documento, nuevo_estado, extras, usuario) do
+    actualizar_persona(documento, nuevo_estado, extras, usuario)
+  end
+
+  @impl true
   @doc """
   Listar todas las personas registradas en memoria.
   """
@@ -91,6 +115,7 @@ defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
     GenServer.call(__MODULE__, :listar_personas)
   end
 
+  @impl true
   @doc """
   Listar todos los mensajes registrados en memoria.
   """

@@ -1,9 +1,12 @@
 defmodule Emergencias.Infraestructura.Procesos.GestorZonas do
   @moduledoc """
   GenServer para la administración concurrente y consulta de zonas territoriales.
+  Implementa el puerto de salida PuertoSalidaZonas.
   """
 
   use GenServer
+
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaZonas
 
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.Zona
@@ -50,6 +53,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorZonas do
     GenServer.call(__MODULE__, {:registrar_zona, params})
   end
 
+  @impl true
+  @doc "Implementación del puerto: registrar zona."
+  @spec registrar(map(), String.t()) :: {:ok, Zona.t()} | {:error, atom()}
+  def registrar(params, _usuario), do: registrar_zona(params)
+
   @doc """
   Consultar una zona por su código identificador.
   """
@@ -58,12 +66,29 @@ defmodule Emergencias.Infraestructura.Procesos.GestorZonas do
     GenServer.call(__MODULE__, {:consultar_zona, id_zona})
   end
 
+  @impl true
+  @doc "Implementación del puerto: consultar zona."
+  @spec consultar(String.t()) :: {:ok, Zona.t()} | {:error, atom()}
+  def consultar(id_zona), do: consultar_zona(id_zona)
+
   @doc """
   Listar todas las zonas en memoria.
   """
   @spec listar_zonas() :: {:ok, list(Zona.t())}
   def listar_zonas do
     GenServer.call(__MODULE__, :listar_zonas)
+  end
+
+  @impl true
+  @doc "Implementación del puerto: listar zonas."
+  @spec listar() :: {:ok, list(Zona.t())}
+  def listar, do: listar_zonas()
+
+  @impl true
+  @doc "Implementación del puerto: actualizar estado o nivel de gravedad de zona."
+  @spec actualizar_estado(String.t(), atom(), String.t()) :: {:ok, Zona.t()} | {:error, atom()}
+  def actualizar_estado(id_zona, nuevo_nivel, usuario) do
+    GenServer.call(__MODULE__, {:actualizar_estado, id_zona, nuevo_nivel, usuario})
   end
 
   # Callbacks OTP
@@ -85,6 +110,11 @@ defmodule Emergencias.Infraestructura.Procesos.GestorZonas do
   @impl true
   def handle_call(:listar_zonas, _from, estado) do
     responder_listado(estado)
+  end
+
+  @impl true
+  def handle_call({:actualizar_estado, id_zona, nuevo_nivel, usuario}, _from, estado) do
+    ejecutar_actualizacion_zona(id_zona, nuevo_nivel, usuario, estado)
   end
 
   # Funciones con verbos en infinitivo
@@ -142,5 +172,29 @@ defmodule Emergencias.Infraestructura.Procesos.GestorZonas do
   @spec responder_listado(map()) :: {:reply, {:ok, list(Zona.t())}, map()}
   def responder_listado(estado) do
     {:reply, {:ok, Map.values(estado.zonas)}, estado}
+  end
+
+  @doc """
+  Ejecutar la actualización de nivel de gravedad de una zona.
+  """
+  @spec ejecutar_actualizacion_zona(String.t(), atom(), String.t(), map()) ::
+          {:reply, {:ok, Zona.t()} | {:error, atom()}, map()}
+  def ejecutar_actualizacion_zona(id_zona, nuevo_nivel, _usuario, estado) do
+    clave = String.upcase(id_zona)
+
+    case Map.get(estado.zonas, clave) do
+      nil ->
+        {:reply, {:error, :zona_no_encontrada}, estado}
+
+      %Zona{} = zona ->
+        with {:ok, nivel_valido} <- Validaciones.validar_nivel_gravedad(nuevo_nivel) do
+          actualizada = %{zona | nivel_gravedad: nivel_valido}
+          MotorPersistencia.guardar(:zonas, actualizada)
+          nuevas = Map.put(estado.zonas, clave, actualizada)
+          {:reply, {:ok, actualizada}, %{estado | zonas: nuevas}}
+        else
+          error -> {:reply, error, estado}
+        end
+    end
   end
 end

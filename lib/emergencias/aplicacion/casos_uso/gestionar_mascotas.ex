@@ -8,7 +8,6 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
   alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.{ReporteMascota, Usuario}
   alias Emergencias.Dominio.Reglas.{Permisos, SimilitudMascotas, TransicionesEstado, Validaciones}
-  alias Emergencias.Infraestructura.Procesos.GestorMascotas
 
   @impl true
   @doc """
@@ -18,12 +17,24 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
           {:ok, ReporteMascota.t()} | {:error, atom()}
   def reportar_mascota(params, %Usuario{} = usuario, opciones \\ []) do
     with :ok <- Permisos.autorizar(usuario.rol, :reportar_mascota) do
-      repo_personalizado = Keyword.get(opciones, :repositorio)
+      puerto_mas = resolver_puerto(opciones, :puerto_mascotas, :puerto_mascotas)
+      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+      reloj = Keyword.get(opciones, :reloj, Reloj)
+      fecha = reloj.obtener_fecha_actual()
 
-      if Process.whereis(GestorMascotas) != nil and is_nil(repo_personalizado) do
-        GestorMascotas.reportar_mascota(params, usuario.nombre)
-      else
-        ejecutar_reporte_directo(params, usuario, opciones)
+      cond do
+        puerto_mas != nil and function_exported?(puerto_mas, :reportar, 2) ->
+          case puerto_mas.reportar(params, usuario.nombre) do
+            {:ok, reporte} ->
+              notificar_bitacora(puerto_bitacora, usuario.nombre, "reportar_mascota", "Mascota #{reporte.id} reportada", fecha)
+              {:ok, reporte}
+
+            error ->
+              error
+          end
+
+        true ->
+          ejecutar_reporte_directo(params, usuario, opciones)
       end
     end
   end
@@ -37,20 +48,22 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
           | {:error, atom()}
   def emparejar_mascotas(%Usuario{} = usuario, opciones \\ []) do
     with :ok <- Permisos.autorizar(usuario.rol, :emparejar_mascotas) do
-      repo_personalizado = Keyword.get(opciones, :repositorio)
+      puerto_mas = resolver_puerto(opciones, :puerto_mascotas, :puerto_mascotas)
       umbral = Keyword.get(opciones, :umbral, 60)
 
-      if Process.whereis(GestorMascotas) != nil and is_nil(repo_personalizado) do
-        GestorMascotas.emparejar_mascotas(umbral)
-      else
-        repositorio = obtener_repositorio(opciones)
-        {:ok, lista} = cargar_mascotas(repositorio)
+      cond do
+        puerto_mas != nil and function_exported?(puerto_mas, :emparejar, 1) ->
+          puerto_mas.emparejar(umbral)
 
-        perdidas = Enum.filter(lista, fn m -> m.tipo_reporte == :perdida and m.estado == :activa end)
-        encontradas = Enum.filter(lista, fn m -> m.tipo_reporte == :encontrada and m.estado == :activa end)
+        true ->
+          repositorio = Keyword.get(opciones, :repositorio)
+          {:ok, lista} = cargar_mascotas(repositorio)
 
-        coincidencias = SimilitudMascotas.emparejar_reportes(perdidas, encontradas, umbral)
-        {:ok, coincidencias}
+          perdidas = Enum.filter(lista, fn m -> m.tipo_reporte == :perdida and m.estado == :activa end)
+          encontradas = Enum.filter(lista, fn m -> m.tipo_reporte == :encontrada and m.estado == :activa end)
+
+          coincidencias = SimilitudMascotas.emparejar_reportes(perdidas, encontradas, umbral)
+          {:ok, coincidencias}
       end
     end
   end
@@ -63,21 +76,41 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
           {:ok, ReporteMascota.t()} | {:error, atom()}
   def resolver_mascota(id_mascota, %Usuario{} = usuario, opciones \\ []) do
     with :ok <- Permisos.autorizar(usuario.rol, :resolver_mascota) do
-      repo_personalizado = Keyword.get(opciones, :repositorio)
+      puerto_mas = resolver_puerto(opciones, :puerto_mascotas, :puerto_mascotas)
+      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+      reloj = Keyword.get(opciones, :reloj, Reloj)
+      fecha = reloj.obtener_fecha_actual()
 
-      if Process.whereis(GestorMascotas) != nil and is_nil(repo_personalizado) do
-        GestorMascotas.resolver_mascota(id_mascota, usuario.nombre)
-      else
-        ejecutar_resolucion_directa(id_mascota, usuario, opciones)
+      cond do
+        puerto_mas != nil and function_exported?(puerto_mas, :resolver, 2) ->
+          case puerto_mas.resolver(id_mascota, usuario.nombre) do
+            {:ok, transitada} ->
+              notificar_bitacora(puerto_bitacora, usuario.nombre, "resolver_mascota", "Mascota #{id_mascota} resuelta", fecha)
+              {:ok, transitada}
+
+            error ->
+              error
+          end
+
+        true ->
+          ejecutar_resolucion_directa(id_mascota, usuario, opciones)
       end
+    end
+  end
+
+  defp resolver_puerto(opciones, clave, config_key) do
+    cond do
+      Keyword.has_key?(opciones, clave) -> Keyword.get(opciones, clave)
+      Keyword.has_key?(opciones, :repositorio) -> nil
+      true -> Application.get_env(:emergencias, config_key)
     end
   end
 
   defp ejecutar_reporte_directo(params, usuario, opciones) do
     with {:ok, datos} <- Validaciones.validar_entrada_mascota(params) do
-      repositorio = obtener_repositorio(opciones)
-      bitacora = obtener_bitacora(opciones)
-      reloj = obtener_reloj(opciones)
+      repositorio = Keyword.get(opciones, :repositorio)
+      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+      reloj = Keyword.get(opciones, :reloj, Reloj)
       fecha = reloj.obtener_fecha_actual()
 
       {:ok, existentes} = cargar_mascotas(repositorio)
@@ -99,47 +132,43 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
         })
 
       guardar_mascota(repositorio, nuevo_reporte)
-      notificar_bitacora(bitacora, usuario.nombre, "reportar_mascota", "Mascota #{nuevo_id} reportada", fecha)
+      notificar_bitacora(puerto_bitacora, usuario.nombre, "reportar_mascota", "Mascota #{nuevo_id} reportada", fecha)
       {:ok, nuevo_reporte}
     end
   end
 
   defp ejecutar_resolucion_directa(id_mascota, usuario, opciones) do
-    repositorio = obtener_repositorio(opciones)
-    bitacora = obtener_bitacora(opciones)
-    reloj = obtener_reloj(opciones)
+    repositorio = Keyword.get(opciones, :repositorio)
+    puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
+    reloj = Keyword.get(opciones, :reloj, Reloj)
     fecha = reloj.obtener_fecha_actual()
 
     with {:ok, %ReporteMascota{} = mascota} <- buscar_mascota(repositorio, id_mascota),
          {:ok, transitada} <- TransicionesEstado.transitar_mascota(mascota, :resuelta, usuario.nombre, fecha) do
       guardar_mascota(repositorio, transitada)
-      notificar_bitacora(bitacora, usuario.nombre, "resolver_mascota", "Mascota #{id_mascota} resuelta", fecha)
+      notificar_bitacora(puerto_bitacora, usuario.nombre, "resolver_mascota", "Mascota #{id_mascota} resuelta", fecha)
       {:ok, transitada}
     end
   end
 
+  defp buscar_mascota(nil, _id), do: {:error, :mascota_no_encontrada}
   defp buscar_mascota(repo, id) do
     {:ok, mascotas} = cargar_mascotas(repo)
     encontrada = Enum.find(mascotas, fn m -> String.upcase(m.id) == String.upcase(id) end)
     if encontrada, do: {:ok, encontrada}, else: {:error, :mascota_no_encontrada}
   end
 
-  defp obtener_repositorio(opts),
-    do: Keyword.get(opts, :repositorio, Emergencias.Infraestructura.Salida.Persistencia.AlmacenArchivo)
-
-  defp obtener_bitacora(opts),
-    do: Keyword.get(opts, :bitacora, Emergencias.Infraestructura.Procesos.BitacoraActividad)
-
-  defp obtener_reloj(opts), do: Keyword.get(opts, :reloj, Reloj)
-
+  defp cargar_mascotas(nil), do: {:ok, []}
   defp cargar_mascotas(repo) do
     if function_exported?(repo, :cargar, 1), do: repo.cargar(:mascotas), else: {:ok, []}
   end
 
+  defp guardar_mascota(nil, _m), do: :ok
   defp guardar_mascota(repo, m) do
     if function_exported?(repo, :guardar, 2), do: repo.guardar(:mascotas, m), else: :ok
   end
 
+  defp notificar_bitacora(nil, _u, _a, _d, _f), do: :ok
   defp notificar_bitacora(bitacora, u, a, d, f) do
     if is_atom(bitacora) and function_exported?(bitacora, :registrar_actividad, 4) do
       bitacora.registrar_actividad(u, a, d, f)

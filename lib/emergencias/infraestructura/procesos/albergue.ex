@@ -69,6 +69,26 @@ defmodule Emergencias.Infraestructura.Procesos.Albergue do
         send(remitente, {:respuesta_albergue, {:ok, albergue}})
         ejecutar_bucle(albergue)
 
+      {:asociar_recurso, id_recurso, cantidad, remitente} ->
+        nuevo_mapa = Map.update(albergue.recursos_asignados, id_recurso, cantidad, &(&1 + cantidad))
+        albergue_actualizado = %{albergue | recursos_asignados: nuevo_mapa}
+        sincronizar_persistencia(albergue_actualizado)
+        send(remitente, {:respuesta_albergue, {:ok, albergue_actualizado}})
+        ejecutar_bucle(albergue_actualizado)
+
+      {:asociar_necesidad, id_necesidad, remitente} ->
+        nuevas_nec =
+          if id_necesidad in albergue.necesidades_asociadas do
+            albergue.necesidades_asociadas
+          else
+            [id_necesidad | albergue.necesidades_asociadas]
+          end
+
+        albergue_actualizado = %{albergue | necesidades_asociadas: nuevas_nec}
+        sincronizar_persistencia(albergue_actualizado)
+        send(remitente, {:respuesta_albergue, {:ok, albergue_actualizado}})
+        ejecutar_bucle(albergue_actualizado)
+
       _mensaje_ignorado ->
         ejecutar_bucle(albergue)
     end
@@ -112,6 +132,36 @@ defmodule Emergencias.Infraestructura.Procesos.Albergue do
     case localizar_proceso(codigo_albergue) do
       {:ok, pid} ->
         send(pid, {:consultar, self()})
+        esperar_respuesta(tiempo_espera)
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asociar una cantidad de recurso al albergue.
+  """
+  @spec asociar_recurso(String.t(), String.t(), pos_integer(), timeout()) :: {:ok, Albergue.t()} | {:error, atom()}
+  def asociar_recurso(codigo_albergue, id_recurso, cantidad, tiempo_espera \\ 5000) do
+    case localizar_proceso(codigo_albergue) do
+      {:ok, pid} ->
+        send(pid, {:asociar_recurso, id_recurso, cantidad, self()})
+        esperar_respuesta(tiempo_espera)
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asociar una necesidad humanitaria al albergue.
+  """
+  @spec asociar_necesidad(String.t(), String.t(), timeout()) :: {:ok, Albergue.t()} | {:error, atom()}
+  def asociar_necesidad(codigo_albergue, id_necesidad, tiempo_espera \\ 5000) do
+    case localizar_proceso(codigo_albergue) do
+      {:ok, pid} ->
+        send(pid, {:asociar_necesidad, id_necesidad, self()})
         esperar_respuesta(tiempo_espera)
 
       error ->
