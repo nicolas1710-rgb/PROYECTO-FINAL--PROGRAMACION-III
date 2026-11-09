@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    %% FLUJO CONCURRENTE: ASIGNACIÓN ATÓMICA DE RECURSOS (30L vs 25L sobre 50L)
+
+    actor Laura as Coordinadora (Laura)
+    actor Carlos as Voluntario (Carlos)
+    participant CU as GestionarRecursos (Caso de Uso)
+    participant GR as GestorRecursos (GenServer OTP)
+    participant Reglas as Inventario (Regla Pura)
+    participant MP as MotorPersistencia (GenServer Archivo)
+    participant Disco as datos/recursos.txt & movimientos.txt
+
+    Note over GR: Estado Inicial: R001 tiene 50 litros disponibles
+
+    par Peticiones Simultáneas en Concurrencia
+        Laura->>CU: assign_resource("R001", "N001", 30)
+        CU->>GR: GenServer.call({:asignar, "R001", "N001", 30, "Laura"})
+    and
+        Carlos->>CU: assign_resource("R001", "N002", 25)
+        CU->>GR: GenServer.call({:asignar, "R001", "N002", 25, "Carlos"})
+    end
+
+    Note over GR: El buzón de mensajes serializa: procesa la petición de Laura primero
+
+    %% Procesamiento Petición Laura (30 litros)
+    rect rgb(240, 255, 240)
+        Note over GR, Reglas: 1. Evaluación Petición Laura (30 litros)
+        GR->>Reglas: descontar/asignar(R001, 30, ...)
+        Reglas-->>GR: {:ok, {R001_disp_20, MOV001}}
+        GR->>MP: guardar(:recursos, R001_disp_20)
+        MP->>Disco: Escritura atómica (temp + rename)
+        GR->>MP: anexar(:movimientos, MOV001)
+        MP->>Disco: Append al final de movimientos.txt
+        GR-->>CU: {:ok, {R001_actualizado, MOV001}}
+        CU-->>Laura: [OK] Asignados 30 litros de R001 a N001. Restan: 20
+    end
+
+    Note over GR: Estado en memoria actualizado: R001 tiene 20 litros disponibles
+
+    %% Procesamiento Petición Carlos (25 litros)
+    rect rgb(255, 240, 240)
+        Note over GR, Reglas: 2. Evaluación Petición Carlos (25 litros)
+        GR->>Reglas: descontar/asignar(R001, 25, ...)
+        Note over Reglas: Validación de Saldo: disponible (20) < solicitado (25)
+        Reglas-->>GR: {:error, :cantidad_insuficiente}
+        Note over GR: El estado en memoria NO se modifica (permanece en 20L)
+        GR-->>CU: {:error, :cantidad_insuficiente}
+        CU-->>Carlos: [ERROR] Existencias insuficientes en inventario
+    end
+

@@ -1,0 +1,2 @@
+N002|Z001|agua|25|0|alta|asignada|2026-11-09T00:59:19.615000Z|Maria|2026-11-09T00:59:19.685000Z~pendiente~asignada~Laura
+N001|Z001|agua|30|0|critica|asignada|2026-11-09T00:59:19.610000Z|Pedro|2026-11-09T00:59:19.641000Z~pendiente~asignada~Laura

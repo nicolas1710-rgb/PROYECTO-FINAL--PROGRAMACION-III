@@ -1,0 +1,44 @@
+flowchart TD
+    %% ÁRBOL DE SUPERVISIÓN OTP DEL SISTEMA DE EMERGENCIAS
+
+    SupervisorRaiz["SupervisorRaiz\n(Supervisor :one_for_one\nmax_restarts: 100, max_seconds: 5)"]
+
+    Reg["RegistroAlbergues\n(Registry :unique)"]
+    MotorPers["MotorPersistencia\n(GenServer Escritor Atómico)"]
+    Bitacora["BitacoraActividad\n(Proceso Puro con bucle receive)"]
+    GUsr["GestorUsuarios\n(GenServer)"]
+    GZon["GestorZonas\n(GenServer)"]
+    GNec["GestorNecesidades\n(GenServer)"]
+    GRec["GestorRecursos\n(GenServer Serializador Clave)"]
+    GPer["GestorPersonas\n(GenServer)"]
+    GMas["GestorMascotas\n(GenServer)"]
+    SupAlb["SupervisorAlbergues\n(DynamicSupervisor :one_for_one)"]
+    TaskSup["Emergencias.TaskSupervisor\n(Task.Supervisor Tareas Paralelas)"]
+
+    %% Procesos dinámicos bajo SupervisorAlbergues
+    Alb1["Albergue ALB001\n(Proceso Puro con bucle receive)"]
+    Alb2["Albergue ALB002\n(Proceso Puro con bucle receive)"]
+    AlbN["Albergue ALB...\n(Proceso Puro con bucle receive)"]
+
+    %% Conexiones del árbol
+    SupervisorRaiz --> Reg
+    SupervisorRaiz --> MotorPers
+    SupervisorRaiz --> Bitacora
+    SupervisorRaiz --> GUsr
+    SupervisorRaiz --> GZon
+    SupervisorRaiz --> GNec
+    SupervisorRaiz --> GRec
+    SupervisorRaiz --> GPer
+    SupervisorRaiz --> GMas
+    SupervisorRaiz --> SupAlb
+    SupervisorRaiz --> TaskSup
+
+    SupAlb -.-> Alb1
+    SupAlb -.-> Alb2
+    SupAlb -.-> AlbN
+
+    %% Relación con Registry
+    Alb1 -. registrado en .-> Reg
+    Alb2 -. registrado en .-> Reg
+    AlbN -. registrado en .-> Reg
+

@@ -1,0 +1,2 @@
+MC002|encontrada|perro|Rocky|dorado|mediano|Z001||activa|Maria|2026-11-09T00:59:19.740000Z|
+MC001|perdida|perro|Rocky|dorado|mediano|Z001||activa|Pedro|2026-11-09T00:59:19.735000Z|

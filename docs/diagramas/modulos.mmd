@@ -1,0 +1,105 @@
+flowchart TD
+    %% ARQUITECTURA HEXAGONAL DEL SISTEMA DE EMERGENCIAS
+    subgraph Infraestructura_Entrada["INFRAESTRUCTURA - ADAPTADORES DE ENTRADA"]
+        Consola["Consola CLI (priv/main.exs)"]
+        Analizador["AnalizadorComandos"]
+        Despachador["DespachadorComandos"]
+        Presentador["Presentador (Formateador Español)"]
+    end
+
+    subgraph Aplicacion_Capa["APLICACIÓN - CASOS DE USO Y PUERTOS"]
+        subgraph Puertos_Entrada["Puertos de Entrada (Behaviours)"]
+            PE_Usr["PuertoUsuarios"]
+            PE_Zon["PuertoZonas"]
+            PE_Nec["PuertoNecesidades"]
+            PE_Rec["PuertoRecursos"]
+            PE_Fam["PuertoFamiliares"]
+            PE_Mas["PuertoMascotas"]
+            PE_Alb["PuertoAlbergues"]
+            PE_Res["PuertoResumenes"]
+        end
+
+        subgraph Casos_Uso["Casos de Uso (Orquestadores)"]
+            CU_Usr["GestionarUsuarios"]
+            CU_Zon["GestionarZonas"]
+            CU_Nec["GestionarNecesidades"]
+            CU_Rec["GestionarRecursos"]
+            CU_Fam["GestionarFamiliares"]
+            CU_Mas["GestionarMascotas"]
+            CU_Alb["GestionarAlbergues"]
+            CU_Res["GenerarResumenes"]
+        end
+
+        subgraph Puertos_Salida["Puertos de Salida (Behaviours)"]
+            PS_Repo["Repositorio"]
+            PS_Bit["Bitacora"]
+            PS_Reloj["Reloj"]
+            PS_GenId["GeneradorId"]
+        end
+    end
+
+    subgraph Dominio_Nucleo["DOMINIO PURO - NÚCLEO INMUTABLE"]
+        subgraph Modelos["Modelos (Structs con Enforce Keys)"]
+            M_Usuario["Usuario"]
+            M_Zona["Zona"]
+            M_Sector["Sector"]
+            M_Punto["PuntoAtencion"]
+            M_Necesidad["Necesidad"]
+            M_Recurso["Recurso"]
+            M_Movimiento["MovimientoInventario"]
+            M_Persona["Persona"]
+            M_Mensaje["Mensaje"]
+            M_Mascota["ReporteMascota"]
+            M_Albergue["Albergue"]
+            M_Actividad["RegistroActividad"]
+        end
+
+        subgraph Reglas["Reglas Puras y Algoritmos"]
+            R_Val["Validaciones"]
+            R_Trans["TransicionesEstado"]
+            R_Perm["Permisos (RBAC MapSet)"]
+            R_Prio["Prioridades"]
+            R_Ord["Ordenamiento (Merge Sort Recursivo)"]
+            R_Inv["Inventario (Atomicidad de Stock)"]
+            R_Ocup["Ocupacion (Cupos y Aforo)"]
+            R_Sim["SimilitudMascotas (Ponderado Jaccard)"]
+            R_Est["EstadisticasZona (Recursión Obligatoria)"]
+        end
+    end
+
+    subgraph Infraestructura_Salida["INFRAESTRUCTURA - ADAPTADORES DE SALIDA Y PROCESOS OTP"]
+        subgraph Concurrencia_OTP["Procesos OTP"]
+            G_Usr["GestorUsuarios (GenServer)"]
+            G_Zon["GestorZonas (GenServer)"]
+            G_Nec["GestorNecesidades (GenServer)"]
+            G_Rec["GestorRecursos (GenServer Clave)"]
+            G_Per["GestorPersonas (GenServer)"]
+            G_Mas["GestorMascotas (GenServer)"]
+            P_Bit["BitacoraActividad (Bucle Recursivo)"]
+            P_Alb["Albergue (Proceso Puro DynamicSupervisor)"]
+        end
+
+        subgraph Persistencia_Archivos["Persistencia en Texto Plano (.txt)"]
+            MotorPers["MotorPersistencia (GenServer Escritor Atómico)"]
+            Almacen["AlmacenArchivo (Adaptador Repositorio)"]
+            Codif["CodificadorTexto (Delimitador Pipe Seguro)"]
+        end
+    end
+
+    %% Flujos de llamada
+    Consola --> Analizador
+    Analizador --> Despachador
+    Despachador --> Casos_Uso
+    Despachador --> Presentador
+
+    Casos_Uso --> Reglas
+    Casos_Uso --> Modelos
+    Casos_Uso --> Concurrencia_OTP
+    Casos_Uso --> PS_Repo
+
+    Concurrencia_OTP --> Reglas
+    Concurrencia_OTP --> MotorPers
+    PS_Repo --> Almacen
+    Almacen --> MotorPers
+    MotorPers --> Codif
+

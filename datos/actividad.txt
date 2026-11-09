@@ -1,0 +1,6 @@
+ACT001|Laura|registro|Usuario creado con rol coordinador|2026-11-09T00:59:19.519000Z
+ACT002|Laura|registrar_albergue|Albergue ALB001 registrado|2026-11-09T00:59:19.575000Z
+ACT003|Pedro|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.607000Z
+ACT004|Maria|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.615000Z
+ACT005|Pedro|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.692000Z
+ACT006|Maria|registro|Usuario creado con rol ciudadano|2026-11-09T00:59:19.702000Z

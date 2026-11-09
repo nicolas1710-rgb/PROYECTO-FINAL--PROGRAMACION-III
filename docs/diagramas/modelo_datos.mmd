@@ -1,0 +1,129 @@
+classDiagram
+    %% MODELO DE DATOS Y RELACIONES DEL SISTEMA DE EMERGENCIAS
+
+    class Usuario {
+        +String id
+        +String nombre
+        +Atom rol
+        +String clave_hash
+        +String fecha_registro
+    }
+
+    class Zona {
+        +String id
+        +String nombre
+        +Atom nivel_gravedad
+        +String fecha_registro
+        +List~Sector~ sectores
+    }
+
+    class Sector {
+        +String id
+        +String nombre
+        +List~PuntoAtencion~ puntos_atencion
+    }
+
+    class PuntoAtencion {
+        +String id
+        +String nombre
+        +Integer personas_afectadas
+        +Map recursos_disponibles
+    }
+
+    class Necesidad {
+        +String id
+        +String codigo_zona
+        +String tipo_recurso
+        +Integer cantidad_solicitada
+        +Integer cantidad_asignada
+        +Atom prioridad
+        +Atom estado
+        +String fecha_registro
+        +String usuario_reporta
+        +List historial
+    }
+
+    class Recurso {
+        +String id
+        +String tipo
+        +String unidad_medida
+        +Integer cantidad_total
+        +Integer cantidad_disponible
+        +Integer cantidad_reservada
+        +String codigo_zona
+        +String fecha_registro
+    }
+
+    class MovimientoInventario {
+        +String id
+        +String codigo_recurso
+        +Atom tipo_movimiento
+        +Integer cantidad
+        +String origen
+        +String destino
+        +String fecha
+        +String usuario_responsable
+    }
+
+    class Persona {
+        +String id
+        +String documento
+        +String nombre_completo
+        +Atom estado
+        +String ubicacion_actual
+        +String codigo_albergue
+        +String fecha_reporte
+        +List historial
+    }
+
+    class Mensaje {
+        +String id
+        +String documento_persona
+        +String remitente
+        +String contenido
+        +String fecha_envio
+    }
+
+    class ReporteMascota {
+        +String id
+        +Atom tipo_reporte
+        +String especie
+        +String nombre
+        +String color
+        +Atom tamano
+        +String codigo_zona
+        +List caracteristicas
+        +Atom estado
+        +String usuario_reporta
+        +String fecha_registro
+        +List historial
+    }
+
+    class Albergue {
+        +String id
+        +String nombre
+        +String codigo_zona
+        +Integer capacidad_maxima
+        +String fecha_registro
+        +MapSet personas_alojadas
+    }
+
+    class RegistroActividad {
+        +String id
+        +String usuario
+        +String accion
+        +String detalles
+        +String fecha
+    }
+
+    %% Jerarquía y Relaciones
+    Zona "1" *-- "many" Sector : contiene
+    Sector "1" *-- "many" PuntoAtencion : agrupa
+    Zona "1" <-- "many" Necesidad : reportada_en
+    Zona "1" <-- "many" Recurso : almacenado_en
+    Recurso "1" <-- "many" MovimientoInventario : genera_historial
+    Persona "1" <-- "many" Mensaje : recibe
+    Zona "1" <-- "many" Albergue : ubicado_en
+    Albergue "1" o-- "many" Persona : aloja_documentos
+    Zona "1" <-- "many" ReporteMascota : perdida_o_hallada_en
+
