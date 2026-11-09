@@ -1,2 +1,17 @@
-N002|Z001|agua|25|25|alta|atendida|2026-11-09T03:48:15.022000Z|Maria||2026-11-09T03:48:15.134000Z~pendiente~atendida~Laura
-N001|Z001|agua|30|30|critica|atendida|2026-11-09T03:48:14.994000Z|Pedro||2026-11-09T03:48:15.062000Z~pendiente~atendida~Laura
+%% coding: utf-8
+#{id => <<"N001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Necesidad',
+  fecha_registro => <<"2026-11-09T18:00:15.865000Z">>,estado => atendida,
+  codigo_zona => <<"Z001">>,tipo_recurso => <<"agua">>,
+  cantidad_solicitada => 30,cantidad_asignada => 30,prioridad => critica,
+  descripcion => <<"Hospital San Juan">>,responsable => <<"Laura">>,
+  historial =>
+      [{<<"2026-11-09T18:00:15.884000Z">>,pendiente,atendida,<<"Laura">>}]}.
+#{id => <<"N002">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Necesidad',
+  fecha_registro => <<"2026-11-09T18:00:15.875000Z">>,estado => atendida,
+  codigo_zona => <<"Z001">>,tipo_recurso => <<"agua">>,
+  cantidad_solicitada => 25,cantidad_asignada => 25,prioridad => alta,
+  descripcion => <<"Albergue Estadio">>,responsable => <<"Laura">>,
+  historial =>
+      [{<<"2026-11-09T18:00:15.935000Z">>,pendiente,atendida,<<"Laura">>}]}.

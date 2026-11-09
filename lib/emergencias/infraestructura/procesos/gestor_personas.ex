@@ -1,299 +1,107 @@
 defmodule Emergencias.Infraestructura.Procesos.GestorPersonas do
-  @moduledoc """
-  GenServer para la administración de personas damnificadas y mensajería familiar en memoria.
-  Implementa el puerto de salida PuertoSalidaPersonas.
-  """
-
+  @moduledoc "GenServer para el censo de personas afectadas y mensajeria familiar."
   use GenServer
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoPersonas
 
-  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaPersonas
-
-  alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
   alias Emergencias.Dominio.Modelos.{Mensaje, Persona}
-  alias Emergencias.Dominio.Reglas.{TransicionesEstado, Validaciones}
-  alias Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia
+  alias Emergencias.Dominio.Reglas.{Estados, Identificadores}
+  alias Emergencias.Infraestructura.Salida.AlmacenArchivo
 
-  @doc """
-  Iniciar el GenServer de personas y mensajería.
-  """
-  @spec iniciar(keyword()) :: {:ok, pid()} | {:error, any()}
-  def iniciar(opciones \\ []) do
-    GenServer.start_link(__MODULE__, opciones, name: __MODULE__)
-  end
+  def iniciar(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts \\ []), do: iniciar(opts)
+  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :iniciar, [opts]}, type: :worker}
 
-  @doc """
-  Callback exigido por OTP; delega a iniciar/1.
-  """
-  def start_link(opciones \\ []), do: iniciar(opciones)
+  @impl true
+  def reportar(p), do: GenServer.call(__MODULE__, {:reportar, p})
+  @impl true
+  def buscar(criterio), do: GenServer.call(__MODULE__, {:buscar, criterio})
+  @impl true
+  def actualizar_estado(doc, est, u, fecha, alb), do: GenServer.call(__MODULE__, {:actualizar_estado, doc, est, u, fecha, alb})
+  @impl true
+  def listar, do: GenServer.call(__MODULE__, :listar)
+  @impl true
+  def enviar_mensaje(p), do: GenServer.call(__MODULE__, {:enviar_mensaje, p})
+  @impl true
+  def listar_mensajes(doc), do: GenServer.call(__MODULE__, {:listar_mensajes, doc})
+  @impl true
+  def listar_todos_mensajes, do: GenServer.call(__MODULE__, :listar_todos_mensajes)
 
-  @doc """
-  Especificación de supervisión OTP; delega a definir_especificacion/1.
-  """
-  def child_spec(opciones), do: definir_especificacion(opciones)
-
-  @doc """
-  Definir la especificación de supervisión para el gestor de personas.
-  """
-  @spec definir_especificacion(keyword()) :: map()
-  def definir_especificacion(opciones) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :iniciar, [opciones]},
-      type: :worker,
-      restart: :permanent,
-      shutdown: 5000
-    }
-  end
-
-  @doc """
-  Registrar reporte de persona.
-  """
-  @spec reportar_persona(map(), String.t()) :: {:ok, Persona.t()} | {:error, atom()}
-  def reportar_persona(params, usuario) do
-    GenServer.call(__MODULE__, {:reportar, params, usuario})
+  @impl true
+  def init(_opts) do
+    pers = AlmacenArchivo.cargar(:personas) |> Map.new(fn p -> {p.documento, p} end)
+    mens = AlmacenArchivo.cargar(:mensajes)
+    {:ok, %{personas: pers, mensajes: mens}}
   end
 
   @impl true
-  @doc "Implementación del puerto: reportar persona."
-  @spec reportar(map(), String.t()) :: {:ok, Persona.t()} | {:error, atom()}
-  def reportar(params, usuario), do: reportar_persona(params, usuario)
-
-  @doc """
-  Buscar persona por documento de identidad.
-  """
-  @spec buscar_persona(String.t()) :: {:ok, Persona.t()} | {:error, :persona_no_encontrada}
-  def buscar_persona(documento) do
-    GenServer.call(__MODULE__, {:buscar, documento})
-  end
-
+  def handle_call({:reportar, p}, _from, st), do: ejecutar_reporte(p, st)
   @impl true
-  @doc "Implementación del puerto: buscar persona."
-  @spec buscar(String.t()) :: {:ok, Persona.t()} | {:error, atom()}
-  def buscar(documento), do: buscar_persona(documento)
-
+  def handle_call({:buscar, crit}, _from, st), do: ejecutar_busqueda(crit, st)
   @impl true
-  @doc """
-  Enviar mensaje familiar.
-  """
-  @spec enviar_mensaje(String.t(), String.t(), String.t()) :: {:ok, Mensaje.t()} | {:error, atom()}
-  def enviar_mensaje(documento, contenido, remitente) do
-    GenServer.call(__MODULE__, {:enviar_mensaje, documento, contenido, remitente})
-  end
-
+  def handle_call({:actualizar_estado, doc, est, u, fecha, alb}, _from, st), do: ejecutar_actualizacion(doc, est, u, fecha, alb, st)
   @impl true
-  @doc """
-  Listar mensajes recibidos para una persona.
-  """
-  @spec listar_mensajes(String.t()) :: {:ok, list(Mensaje.t())}
-  def listar_mensajes(documento) do
-    GenServer.call(__MODULE__, {:listar_mensajes, documento})
-  end
-
-  @doc """
-  Actualizar estado y ubicación de una persona.
-  """
-  @spec actualizar_persona(String.t(), atom(), map(), String.t()) ::
-          {:ok, Persona.t()} | {:error, atom()}
-  def actualizar_persona(documento, nuevo_estado, extras, usuario) do
-    GenServer.call(__MODULE__, {:actualizar, documento, nuevo_estado, extras, usuario})
-  end
-
+  def handle_call(:listar, _from, st), do: {:reply, Map.values(st.personas), st}
   @impl true
-  @doc "Implementación del puerto: actualizar estado y ubicación de persona."
-  @spec actualizar_estado(String.t(), atom(), map(), String.t()) ::
-          {:ok, Persona.t()} | {:error, atom()}
-  def actualizar_estado(documento, nuevo_estado, extras, usuario) do
-    actualizar_persona(documento, nuevo_estado, extras, usuario)
-  end
-
+  def handle_call({:enviar_mensaje, p}, _from, st), do: ejecutar_envio_mensaje(p, st)
   @impl true
-  @doc """
-  Listar todas las personas registradas en memoria.
-  """
-  @spec listar_personas() :: {:ok, list(Persona.t())}
-  def listar_personas do
-    GenServer.call(__MODULE__, :listar_personas)
+  def handle_call({:listar_mensajes, doc}, _from, st) do
+    mens = Enum.filter(st.mensajes, fn m -> m.documento_persona == doc end)
+    {:reply, mens, st}
   end
-
   @impl true
-  @doc """
-  Listar todos los mensajes registrados en memoria.
-  """
-  @spec listar_todos_mensajes() :: {:ok, list(Mensaje.t())}
-  def listar_todos_mensajes do
-    GenServer.call(__MODULE__, :listar_todos_mensajes)
+  def handle_call(:listar_todos_mensajes, _from, st), do: {:reply, st.mensajes, st}
+
+  defp ejecutar_reporte(p, st) do
+    fecha = DateTime.utc_now() |> DateTime.to_iso8601()
+    {:ok, persona} = Persona.construir(Map.merge(p, %{fecha_registro: fecha}))
+    nuevo_st = %{st | personas: Map.put(st.personas, persona.documento, persona)}
+    AlmacenArchivo.guardar(:personas, Map.values(nuevo_st.personas))
+    {:reply, {:ok, persona}, nuevo_st}
   end
 
-  @doc """
-  Recargar personas y mensajes desde disco.
-  """
-  @spec recargar_datos() :: :ok
-  def recargar_datos do
-    GenServer.call(__MODULE__, :recargar)
-  end
-
-  # Callbacks OTP
-  @impl true
-  def init(opciones) do
-    inicializar_gestor(opciones)
-  end
-
-  @impl true
-  def handle_call(:listar_personas, _from, estado) do
-    {:reply, {:ok, Map.values(estado.personas)}, estado}
-  end
-
-  @impl true
-  def handle_call(:listar_todos_mensajes, _from, estado) do
-    {:reply, {:ok, Enum.reverse(estado.mensajes)}, estado}
-  end
-
-  @impl true
-  def handle_call(:recargar, _from, _estado) do
-    {:ok, nuevo_estado} = inicializar_gestor([])
-    {:reply, :ok, nuevo_estado}
-  end
-
-  @impl true
-  def handle_call({:reportar, params, usuario}, _from, estado) do
-    ejecutar_reporte(params, usuario, estado)
-  end
-
-  @impl true
-  def handle_call({:buscar, documento}, _from, estado) do
-    ejecutar_busqueda(documento, estado)
-  end
-
-  @impl true
-  def handle_call({:enviar_mensaje, documento, contenido, remitente}, _from, estado) do
-    ejecutar_envio_mensaje(documento, contenido, remitente, estado)
-  end
-
-  @impl true
-  def handle_call({:listar_mensajes, documento}, _from, estado) do
-    ejecutar_listado_mensajes(documento, estado)
-  end
-
-  @impl true
-  def handle_call({:actualizar, doc, nuevo_est, extras, u}, _from, estado) do
-    ejecutar_actualizacion(doc, nuevo_est, extras, u, estado)
-  end
-
-  # Funciones con verbos en infinitivo
-  @doc """
-  Inicializar el estado cargando personas y mensajes desde persistencia.
-  """
-  @spec inicializar_gestor(keyword()) :: {:ok, map()}
-  def inicializar_gestor(_opciones) do
-    {:ok, personas} = MotorPersistencia.cargar(:personas)
-    {:ok, mensajes} = MotorPersistencia.cargar(:mensajes)
-
-    mapa = Map.new(personas, fn p -> {String.trim(p.documento), p} end)
-    {:ok, %{personas: mapa, mensajes: mensajes}}
-  end
-
-  @doc """
-  Ejecutar el reporte de una persona en memoria y persistencia.
-  """
-  @spec ejecutar_reporte(map(), String.t(), map()) ::
-          {:reply, {:ok, Persona.t()} | {:error, atom()}, map()}
-  def ejecutar_reporte(params, _usuario, estado) do
-    with {:ok, validados} <- Validaciones.validar_entrada_persona(params) do
-      nuevo_id = GeneradorId.formatear_id(:persona, map_size(estado.personas) + 1)
-      fecha = Reloj.obtener_fecha_actual()
-
-      {:ok, nueva_p} =
-        Persona.construir(%{
-          id: nuevo_id,
-          documento: validados.documento,
-          nombre_completo: validados.nombre_completo,
-          estado: :reportada,
-          fecha_reporte: fecha,
-          ubicacion_actual: Map.get(params, :ubicacion_actual, "desconocida"),
-          codigo_albergue: Map.get(params, :codigo_albergue, nil)
-        })
-
-      MotorPersistencia.guardar(:personas, nueva_p)
-      nuevas = Map.put(estado.personas, String.trim(validados.documento), nueva_p)
-      {:reply, {:ok, nueva_p}, %{estado | personas: nuevas}}
-    else
-      error -> {:reply, error, estado}
-    end
-  end
-
-  @doc """
-  Ejecutar la búsqueda de una persona por documento.
-  """
-  @spec ejecutar_busqueda(String.t(), map()) ::
-          {:reply, {:ok, Persona.t()} | {:error, :persona_no_encontrada}, map()}
-  def ejecutar_busqueda(documento, estado) do
-    case Map.get(estado.personas, String.trim(documento)) do
-      %Persona{} = p -> {:reply, {:ok, p}, estado}
-      nil -> {:reply, {:error, :persona_no_encontrada}, estado}
-    end
-  end
-
-  @doc """
-  Ejecutar el envío de un mensaje familiar.
-  """
-  @spec ejecutar_envio_mensaje(String.t(), String.t(), String.t(), map()) ::
-          {:reply, {:ok, Mensaje.t()} | {:error, atom()}, map()}
-  def ejecutar_envio_mensaje(documento, contenido, remitente, estado) do
-    with {:ok, doc_valido} <- Validaciones.validar_documento(documento),
-         {:ok, cont_valido} <- Validaciones.validar_texto_no_vacio(contenido) do
-      nuevo_id = GeneradorId.formatear_id(:mensaje, length(estado.mensajes) + 1)
-      fecha = Reloj.obtener_fecha_actual()
-
-      {:ok, nuevo_m} =
-        Mensaje.construir(%{
-          id: nuevo_id,
-          documento_persona: doc_valido,
-          remitente: remitente,
-          contenido: cont_valido,
-          fecha_envio: fecha
-        })
-
-      MotorPersistencia.anexar(:mensajes, nuevo_m)
-      {:reply, {:ok, nuevo_m}, %{estado | mensajes: [nuevo_m | estado.mensajes]}}
-    else
-      error -> {:reply, error, estado}
-    end
-  end
-
-  @doc """
-  Ejecutar el listado de mensajes asociados a un documento.
-  """
-  @spec ejecutar_listado_mensajes(String.t(), map()) :: {:reply, {:ok, list(Mensaje.t())}, map()}
-  def ejecutar_listado_mensajes(documento, estado) do
-    doc_limpio = String.trim(documento)
-    filtrados = Enum.filter(estado.mensajes, fn m -> String.trim(m.documento_persona) == doc_limpio end)
-    {:reply, {:ok, Enum.reverse(filtrados)}, estado}
-  end
-
-  @doc """
-  Ejecutar la actualización de estado de una persona.
-  """
-  @spec ejecutar_actualizacion(String.t(), atom(), map(), String.t(), map()) ::
-          {:reply, {:ok, Persona.t()} | {:error, atom()}, map()}
-  def ejecutar_actualizacion(documento, nuevo_estado, extras, usuario, estado) do
-    doc_limpio = String.trim(documento)
-
-    case Map.get(estado.personas, doc_limpio) do
+  defp ejecutar_busqueda(criterio, st) when is_binary(criterio) do
+    case Map.get(st.personas, criterio) do
       nil ->
-        {:reply, {:error, :persona_no_encontrada}, estado}
+        encontrados = Enum.filter(Map.values(st.personas), fn p -> String.contains?(String.downcase(p.nombre), String.downcase(criterio)) end)
+        if encontrados != [], do: {:reply, {:ok, hd(encontrados)}, st}, else: {:reply, {:error, :persona_no_encontrada}, st}
+      p -> {:reply, {:ok, p}, st}
+    end
+  end
+  defp ejecutar_busqueda(crit_map, st) when is_map(crit_map) do
+    filtrados = Enum.filter(Map.values(st.personas), fn p ->
+      Enum.all?(crit_map, fn {k, v} ->
+        case k do
+          :nombre -> String.contains?(String.downcase(p.nombre), String.downcase(v))
+          :zona -> String.downcase(to_string(p.zona)) == String.downcase(to_string(v))
+          :estado -> to_string(p.estado) == to_string(v)
+          _ -> true
+        end
+      end)
+    end)
+    {:reply, {:ok, filtrados}, st}
+  end
 
-      %Persona{} = actual ->
-        fecha = Reloj.obtener_fecha_actual()
-
-        case TransicionesEstado.transitar_persona(actual, nuevo_estado, extras, usuario, fecha) do
-          {:ok, transitada} ->
-            MotorPersistencia.guardar(:personas, transitada)
-            nuevas = Map.put(estado.personas, doc_limpio, transitada)
-            {:reply, {:ok, transitada}, %{estado | personas: nuevas}}
-
-          {:error, razon} ->
-            {:reply, {:error, razon}, estado}
+  defp ejecutar_actualizacion(doc, est, u, fecha, alb, st) do
+    case Map.get(st.personas, doc) do
+      nil -> {:reply, {:error, :persona_no_encontrada}, st}
+      p ->
+        case Estados.transitar(p, est, u, fecha) do
+          {:ok, p_act} ->
+            p_final = if alb, do: %{p_act | codigo_albergue: alb}, else: p_act
+            nuevo_st = %{st | personas: Map.put(st.personas, doc, p_final)}
+            AlmacenArchivo.guardar(:personas, Map.values(nuevo_st.personas))
+            {:reply, {:ok, p_final}, nuevo_st}
+          error -> {:reply, error, st}
         end
     end
+  end
+
+  defp ejecutar_envio_mensaje(p, st) do
+    id = Identificadores.generar("M", length(st.mensajes))
+    fecha = DateTime.utc_now() |> DateTime.to_iso8601()
+    {:ok, m} = Mensaje.construir(Map.merge(p, %{id: id, fecha: fecha}))
+    nuevo_st = %{st | mensajes: [m | st.mensajes]}
+    AlmacenArchivo.guardar(:mensajes, nuevo_st.mensajes)
+    {:reply, {:ok, m}, nuevo_st}
   end
 end

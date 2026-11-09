@@ -1,38 +1,19 @@
+defmodule Emergencias.Dominio.Modelos.PuntoAtencion do
+  @moduledoc "Punto de atencion especifico dentro de un sector."
+  defstruct [:id, :nombre, personas_afectadas: 0]
+end
+
+defmodule Emergencias.Dominio.Modelos.Sector do
+  @moduledoc "Sector barrial o funcional dentro de una zona."
+  defstruct [:id, :nombre, personas_afectadas: 0, puntos_atencion: []]
+end
+
 defmodule Emergencias.Dominio.Modelos.Zona do
-  @moduledoc """
-  Representa una zona geográfica afectada por la emergencia.
-  Contiene una jerarquía de sectores y puntos de atención.
-  """
+  @moduledoc "Zona territorial afectada con sectores y puntos anidados."
+  defstruct [:id, :nombre, :nivel_gravedad, personas_afectadas: 0, sectores: [], fecha_registro: nil]
 
-  alias Emergencias.Dominio.Modelos.Sector
-
-  @enforce_keys [:id, :nombre, :nivel_gravedad, :fecha_registro]
-  defstruct [:id, :nombre, :nivel_gravedad, :fecha_registro, sectores: []]
-
-  @type nivel_gravedad :: :critico | :alto | :medio | :bajo
-
-  @type t :: %__MODULE__{
-          id: String.t(),
-          nombre: String.t(),
-          nivel_gravedad: nivel_gravedad(),
-          fecha_registro: String.t(),
-          sectores: [Sector.t()]
-        }
-
-  @doc """
-  Construir una zona con su jerarquía de sectores.
-  """
-  @spec construir(map()) :: {:ok, t()} | {:error, atom()}
-  def construir(atributos) when is_map(atributos) do
-    {:ok,
-     %__MODULE__{
-       id: Map.fetch!(atributos, :id),
-       nombre: Map.fetch!(atributos, :nombre),
-       nivel_gravedad: Map.fetch!(atributos, :nivel_gravedad),
-       fecha_registro: Map.fetch!(atributos, :fecha_registro),
-       sectores: Map.get(atributos, :sectores, [])
-     }}
-  rescue
-    KeyError -> {:error, :atributos_incompletos}
+  @doc "Construir una zona base con lista de sectores vacia."
+  def construir(attrs) when is_map(attrs) do
+    {:ok, struct(__MODULE__, Map.put_new(attrs, :sectores, []))}
   end
 end

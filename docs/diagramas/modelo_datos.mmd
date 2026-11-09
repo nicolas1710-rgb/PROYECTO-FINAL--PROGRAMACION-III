@@ -6,20 +6,20 @@ classDiagram
         +String nombre
         +Atom rol
         +String clave_hash
-        +String fecha_registro
     }
 
     class Zona {
         +String id
         +String nombre
         +Atom nivel_gravedad
-        +String fecha_registro
+        +Integer personas_afectadas
         +List~Sector~ sectores
     }
 
     class Sector {
         +String id
         +String nombre
+        +Integer personas_afectadas
         +List~PuntoAtencion~ puntos_atencion
     }
 
@@ -27,7 +27,6 @@ classDiagram
         +String id
         +String nombre
         +Integer personas_afectadas
-        +Map recursos_disponibles
     }
 
     class Necesidad {
@@ -39,66 +38,56 @@ classDiagram
         +Integer cantidad_asignada
         +Atom prioridad
         +Atom estado
-        +String fecha_registro
-        +String usuario_reporta
-        +List historial
+        +String responsable
     }
 
     class Recurso {
         +String id
         +String nombre
-        +String tipo
-        +String unidad_medida
-        +Integer cantidad_total
+        +String categoria
         +Integer cantidad_disponible
-        +Integer cantidad_reservada
-        +String codigo_zona
-        +String fecha_registro
+        +Integer cantidad_total
+        +String unidad_medida
+        +String ubicacion
     }
 
-    class MovimientoInventario {
+    class Movimiento {
         +String id
-        +String codigo_recurso
-        +Atom tipo_movimiento
+        +String recurso_id
+        +Atom tipo
         +Integer cantidad
         +String origen
         +String destino
         +String fecha
-        +String usuario_responsable
     }
 
     class Persona {
-        +String id
         +String documento
-        +String nombre_completo
+        +String nombre
+        +Integer edad
+        +String zona
         +Atom estado
-        +String ubicacion_actual
         +String codigo_albergue
-        +String fecha_reporte
-        +List historial
     }
 
     class Mensaje {
         +String id
-        +String documento_persona
+        +String documento
         +String remitente
         +String contenido
-        +String fecha_envio
+        +String fecha
     }
 
-    class ReporteMascota {
+    class Mascota {
         +String id
         +Atom tipo_reporte
         +String especie
-        +String nombre
         +String color
         +Atom tamano
         +String codigo_zona
-        +List caracteristicas
+        +String nombre
+        +List rasgos
         +Atom estado
-        +String usuario_reporta
-        +String fecha_registro
-        +List historial
     }
 
     class Albergue {
@@ -106,29 +95,20 @@ classDiagram
         +String nombre
         +String codigo_zona
         +Integer capacidad_maxima
-        +String fecha_registro
         +MapSet personas_alojadas
-        +Map recursos_asignados
+        +List recursos_asignados
         +List necesidades_asociadas
     }
 
-    class RegistroActividad {
-        +String id
-        +String usuario
-        +String accion
-        +String detalles
-        +String fecha
-    }
-
-    %% Jerarquía y Relaciones
+    %% Jerarquia y Relaciones
     Zona "1" *-- "many" Sector : contiene
     Sector "1" *-- "many" PuntoAtencion : agrupa
     Zona "1" <-- "many" Necesidad : reportada_en
     Zona "1" <-- "many" Recurso : almacenado_en
-    Recurso "1" <-- "many" MovimientoInventario : genera_historial
+    Recurso "1" <-- "many" Movimiento : registra_historial
     Persona "1" <-- "many" Mensaje : recibe
     Zona "1" <-- "many" Albergue : ubicado_en
     Albergue "1" o-- "many" Persona : aloja_documentos
-    Albergue "1" ..> "many" Recurso : vincula_recursos_asignados
-    Albergue "1" ..> "many" Necesidad : vincula_necesidades_asociadas
-    Zona "1" <-- "many" ReporteMascota : perdida_o_hallada_en
+    Albergue "1" ..> "many" Recurso : vincula_recursos
+    Albergue "1" ..> "many" Necesidad : vincula_necesidades
+    Zona "1" <-- "many" Mascota : perdida_o_hallada_en

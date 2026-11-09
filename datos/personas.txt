@@ -1,1 +1,8 @@
-P001|10949001|Carlos Lopez|en_albergue|desconocida|ALB001|2026-11-09T03:48:15.150000Z|2026-11-09T03:48:15.182000Z~reportada~en_albergue~Laura
+%% coding: utf-8
+#{'__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Persona',
+  nombre => <<"Carlos Lopez">>,
+  fecha_registro => <<"2026-11-09T18:00:15.962000Z">>,
+  codigo_albergue => <<"ALB001">>,documento => <<"10949001">>,
+  estado => en_albergue,zona => <<"Z001">>,edad => 35,
+  historial =>
+      [{<<"2026-11-09T18:00:16.016000Z">>,reportada,en_albergue,<<"Laura">>}]}.

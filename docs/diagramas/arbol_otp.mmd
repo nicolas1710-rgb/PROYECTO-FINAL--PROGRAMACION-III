@@ -1,52 +1,40 @@
 flowchart TD
-    %% ÁRBOL DE SUPERVISIÓN OTP DEL SISTEMA DE EMERGENCIAS
+    %% ARBOL DE SUPERVISION OTP DEL SISTEMA DE EMERGENCIAS
 
     SupervisorRaiz["SupervisorRaiz\n(Supervisor :one_for_one\nmax_restarts: 3, max_seconds: 5)"]
 
     Reg["RegistroAlbergues\n(Registry :unique)"]
-    MotorPers["MotorPersistencia\n(GenServer Escritor Atómico)"]
-    Bitacora["BitacoraActividad\n(Proceso Puro con bucle receive)"]
-    GUsr["GestorUsuarios\n(GenServer : PuertoSalidaUsuarios)"]
-    GZon["GestorZonas\n(GenServer : PuertoSalidaZonas)"]
-    GNec["GestorNecesidades\n(GenServer : PuertoSalidaNecesidades)"]
-    GRec["GestorRecursos\n(GenServer : PuertoSalidaRecursos\nSerializador Atómico de Inventario)"]
-    GPer["GestorPersonas\n(GenServer : PuertoSalidaPersonas)"]
-    GMas["GestorMascotas\n(GenServer : PuertoSalidaMascotas)"]
-    SupAlb["SupervisorAlbergues (SupAlbergues)\n(DynamicSupervisor :one_for_one)"]
+    Bitacora["Bitacora\n(Proceso puro con receive)"]
+    GUsr["GestorUsuarios\n(GenServer : PuertoUsuarios)"]
+    GZon["GestorZonas\n(GenServer : PuertoZonas)"]
+    GLog["GestorLogistica\n(GenServer : PuertoLogistica\nSerializador atomico: recursos, necesidades, movimientos)"]
+    GPer["GestorPersonas\n(GenServer : PuertoPersonas)"]
+    GMas["GestorMascotas\n(GenServer : PuertoMascotas)"]
+    SupAlb["SupervisorAlbergues\n(DynamicSupervisor :one_for_one\nImplementa PuertoAlbergues)"]
     TaskSup["Emergencias.TaskSupervisor\n(Task.Supervisor Tareas Paralelas)"]
 
-    %% Adaptador de infraestructura para Albergues
-    AdaptAlb["AdaptadorAlbergues\n(Módulo Adaptador : PuertoSalidaAlbergues)"]
+    %% Procesos dinamicos bajo SupervisorAlbergues
+    Alb1["Albergue ALB001\n(Proceso puro con bucle receive)"]
+    Alb2["Albergue ALB002\n(Proceso puro con bucle receive)"]
+    AlbN["Albergue ALB...\n(Proceso puro con bucle receive)"]
 
-    %% Procesos dinámicos bajo SupervisorAlbergues
-    Alb1["Albergue ALB001\n(Proceso Puro con bucle receive recursivo)"]
-    Alb2["Albergue ALB002\n(Proceso Puro con bucle receive recursivo)"]
-    AlbN["Albergue ALB...\n(Proceso Puro con bucle receive recursivo)"]
-
-    %% Conexiones del árbol de supervisión
+    %% Conexiones del arbol de supervision
     SupervisorRaiz --> Reg
-    SupervisorRaiz --> MotorPers
     SupervisorRaiz --> Bitacora
     SupervisorRaiz --> GUsr
     SupervisorRaiz --> GZon
-    SupervisorRaiz --> GNec
-    SupervisorRaiz --> GRec
+    SupervisorRaiz --> GLog
     SupervisorRaiz --> GPer
     SupervisorRaiz --> GMas
     SupervisorRaiz --> SupAlb
     SupervisorRaiz --> TaskSup
 
-    %% Supervisión Dinámica de Albergues
-    SupAlb -. supervisa dinámicamente .-> Alb1
-    SupAlb -. supervisa dinámicamente .-> Alb2
-    SupAlb -. supervisa dinámicamente .-> AlbN
+    %% Supervision Dinamica de Albergues
+    SupAlb -. supervisa dinamicamente .-> Alb1
+    SupAlb -. supervisa dinamicamente .-> Alb2
+    SupAlb -. supervisa dinamicamente .-> AlbN
 
-    %% Relación con Registry
+    %% Registro de Albergues
     Alb1 -. registrado en .-> Reg
     Alb2 -. registrado en .-> Reg
     AlbN -. registrado en .-> Reg
-
-    %% AdaptadorAlbergues coordina con Supervisor, Registry y Persistencia
-    AdaptAlb -. inicia procesos en .-> SupAlb
-    AdaptAlb -. busca PID en .-> Reg
-    AdaptAlb -. persiste en .-> MotorPers

@@ -1,235 +1,79 @@
 defmodule Emergencias.Infraestructura.Procesos.GestorMascotas do
-  @moduledoc """
-  GenServer para la administración concurrente de reportes de mascotas y su emparejamiento.
-  Impide el doble cierre y serializa resoluciones.
-  Implementa el puerto de salida PuertoSalidaMascotas.
-  """
-
+  @moduledoc "GenServer para reportes, emparejamiento y resolucion de mascotas."
   use GenServer
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoMascotas
 
-  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoSalidaMascotas
+  alias Emergencias.Dominio.Modelos.Mascota
+  alias Emergencias.Dominio.Reglas.{Estados, Identificadores}
+  alias Emergencias.Infraestructura.Salida.AlmacenArchivo
 
-  alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
-  alias Emergencias.Dominio.Modelos.ReporteMascota
-  alias Emergencias.Dominio.Reglas.{SimilitudMascotas, TransicionesEstado, Validaciones}
-  alias Emergencias.Infraestructura.Salida.Persistencia.MotorPersistencia
+  def iniciar(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts \\ []), do: iniciar(opts)
+  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :iniciar, [opts]}, type: :worker}
 
-  @doc """
-  Iniciar el GenServer de mascotas.
-  """
-  @spec iniciar(keyword()) :: {:ok, pid()} | {:error, any()}
-  def iniciar(opciones \\ []) do
-    GenServer.start_link(__MODULE__, opciones, name: __MODULE__)
-  end
+  @impl true
+  def reportar(p), do: GenServer.call(__MODULE__, {:reportar, p})
+  @impl true
+  def listar, do: GenServer.call(__MODULE__, :listar)
+  @impl true
+  def consultar(id), do: GenServer.call(__MODULE__, {:consultar, id})
+  @impl true
+  def confirmar_coincidencia(id_p, id_e, u, fecha), do: GenServer.call(__MODULE__, {:confirmar_coincidencia, id_p, id_e, u, fecha})
+  @impl true
+  def actualizar_estado(id, est, u, fecha), do: GenServer.call(__MODULE__, {:actualizar_estado, id, est, u, fecha})
 
-  @doc """
-  Callback exigido por OTP; delega a iniciar/1.
-  """
-  def start_link(opciones \\ []), do: iniciar(opciones)
-
-  @doc """
-  Especificación de supervisión OTP; delega a definir_especificacion/1.
-  """
-  def child_spec(opciones), do: definir_especificacion(opciones)
-
-  @doc """
-  Definir la especificación de supervisión para el gestor de mascotas.
-  """
-  @spec definir_especificacion(keyword()) :: map()
-  def definir_especificacion(opciones) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :iniciar, [opciones]},
-      type: :worker,
-      restart: :permanent,
-      shutdown: 5000
-    }
-  end
-
-  @doc """
-  Registrar reporte de mascota.
-  """
-  @spec reportar_mascota(map(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
-  def reportar_mascota(params, usuario) do
-    GenServer.call(__MODULE__, {:reportar, params, usuario})
+  @impl true
+  def init(_opts) do
+    lista = AlmacenArchivo.cargar(:mascotas)
+    {:ok, Map.new(lista, fn m -> {m.id, m} end)}
   end
 
   @impl true
-  @doc "Implementación del puerto: reportar mascota."
-  @spec reportar(map(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
-  def reportar(params, usuario), do: reportar_mascota(params, usuario)
-
-  @doc """
-  Emparejar mascotas activas calculando similitud ponderada.
-  """
-  @spec emparejar_mascotas(non_neg_integer()) ::
-          {:ok, list({ReporteMascota.t(), ReporteMascota.t(), non_neg_integer()})}
-  def emparejar_mascotas(umbral \\ 60) do
-    GenServer.call(__MODULE__, {:emparejar, umbral})
-  end
-
+  def handle_call({:reportar, p}, _from, st), do: ejecutar_reporte(p, st)
   @impl true
-  @doc "Implementación del puerto: emparejar mascotas."
-  @spec emparejar(non_neg_integer()) ::
-          {:ok, list({ReporteMascota.t(), ReporteMascota.t(), non_neg_integer()})}
-  def emparejar(umbral), do: emparejar_mascotas(umbral)
-
-  @doc """
-  Resolver reporte de mascota impidiendo el doble cierre.
-  """
-  @spec resolver_mascota(String.t(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
-  def resolver_mascota(id_mascota, usuario) do
-    GenServer.call(__MODULE__, {:resolver, id_mascota, usuario})
-  end
-
+  def handle_call(:listar, _from, st), do: {:reply, Map.values(st), st}
   @impl true
-  @doc "Implementación del puerto: resolver caso de mascota."
-  @spec resolver(String.t(), String.t()) :: {:ok, ReporteMascota.t()} | {:error, atom()}
-  def resolver(id_mascota, usuario), do: resolver_mascota(id_mascota, usuario)
-
-  @doc """
-  Listar todos los reportes de mascotas en memoria.
-  """
-  @spec listar_mascotas() :: {:ok, list(ReporteMascota.t())}
-  def listar_mascotas do
-    GenServer.call(__MODULE__, :listar)
-  end
-
+  def handle_call({:consultar, id}, _from, st), do: {:reply, Map.fetch(st, id), st}
   @impl true
-  @doc "Implementación del puerto: listar reportes de mascotas."
-  @spec listar() :: {:ok, list(ReporteMascota.t())}
-  def listar, do: listar_mascotas()
-
-  @doc """
-  Recargar reportes de mascotas desde persistencia en disco.
-  """
-  @spec recargar_datos() :: :ok
-  def recargar_datos do
-    GenServer.call(__MODULE__, :recargar)
-  end
-
-  # Callbacks OTP
+  def handle_call({:confirmar_coincidencia, id_p, id_e, u, f}, _from, st), do: ejecutar_confirmacion(id_p, id_e, u, f, st)
   @impl true
-  def init(opciones) do
-    inicializar_gestor(opciones)
+  def handle_call({:actualizar_estado, id, est, u, f}, _from, st), do: ejecutar_actualizacion(id, est, u, f, st)
+
+  defp ejecutar_reporte(p, st) do
+    id = Map.get(p, :id) || Identificadores.generar("MC", map_size(st))
+    fecha = DateTime.utc_now() |> DateTime.to_iso8601()
+    {:ok, m} = Mascota.construir(Map.merge(p, %{id: id, fecha_registro: fecha}))
+    nuevo_st = Map.put(st, id, m)
+    AlmacenArchivo.guardar(:mascotas, Map.values(nuevo_st))
+    {:reply, {:ok, m}, nuevo_st}
   end
 
-  @impl true
-  def handle_call(:recargar, _from, _estado) do
-    {:ok, nuevo_estado} = inicializar_gestor([])
-    {:reply, :ok, nuevo_estado}
-  end
-
-  @impl true
-  def handle_call({:reportar, params, usuario}, _from, estado) do
-    ejecutar_reporte(params, usuario, estado)
-  end
-
-  @impl true
-  def handle_call({:emparejar, umbral}, _from, estado) do
-    ejecutar_emparejamiento(umbral, estado)
-  end
-
-  @impl true
-  def handle_call({:resolver, id_mascota, usuario}, _from, estado) do
-    ejecutar_resolucion(id_mascota, usuario, estado)
-  end
-
-  @impl true
-  def handle_call(:listar, _from, estado) do
-    responder_listado(estado)
-  end
-
-  # Funciones con verbos en infinitivo
-  @doc """
-  Inicializar el estado cargando reportes desde persistencia.
-  """
-  @spec inicializar_gestor(keyword()) :: {:ok, map()}
-  def inicializar_gestor(_opciones) do
-    {:ok, mascotas} = MotorPersistencia.cargar(:mascotas)
-    mapa = Map.new(mascotas, fn m -> {String.upcase(m.id), m} end)
-    {:ok, %{mascotas: mapa}}
-  end
-
-  @doc """
-  Ejecutar el registro seguro de un reporte de mascota.
-  """
-  @spec ejecutar_reporte(map(), String.t(), map()) ::
-          {:reply, {:ok, ReporteMascota.t()} | {:error, atom()}, map()}
-  def ejecutar_reporte(params, usuario, estado) do
-    with {:ok, validados} <- Validaciones.validar_entrada_mascota(params) do
-      nuevo_id = GeneradorId.formatear_id(:mascota, map_size(estado.mascotas) + 1)
-      fecha = Reloj.obtener_fecha_actual()
-
-      {:ok, nuevo_rep} =
-        ReporteMascota.construir(%{
-          id: nuevo_id,
-          tipo_reporte: validados.tipo_reporte,
-          especie: validados.especie,
-          nombre: validados.nombre,
-          color: validados.color,
-          tamano: validados.tamano,
-          codigo_zona: validados.codigo_zona,
-          caracteristicas: validados.caracteristicas,
-          estado: :activa,
-          usuario_reporta: usuario,
-          fecha_registro: fecha
-        })
-
-      MotorPersistencia.guardar(:mascotas, nuevo_rep)
-      nuevas = Map.put(estado.mascotas, String.upcase(nuevo_id), nuevo_rep)
-      {:reply, {:ok, nuevo_rep}, %{estado | mascotas: nuevas}}
+  defp ejecutar_confirmacion(id_p, id_e, u, fecha, st) do
+    with {:ok, p} <- Map.fetch(st, id_p),
+         {:ok, e} <- Map.fetch(st, id_e),
+         true <- p.estado != :resuelta and e.estado != :resuelta or {:error, :ya_cerrada},
+         {:ok, p_res} <- Estados.transitar(p, :resuelta, u, fecha),
+         {:ok, e_res} <- Estados.transitar(e, :resuelta, u, fecha) do
+      nuevo_st = st |> Map.put(id_p, p_res) |> Map.put(id_e, e_res)
+      AlmacenArchivo.guardar(:mascotas, Map.values(nuevo_st))
+      {:reply, {:ok, {p_res, e_res}}, nuevo_st}
     else
-      error -> {:reply, error, estado}
+      :error -> {:reply, {:error, :mascota_no_encontrada}, st}
+      error -> {:reply, error, st}
     end
   end
 
-  @doc """
-  Ejecutar el emparejamiento ponderado entre perdidas y encontradas activas.
-  """
-  @spec ejecutar_emparejamiento(non_neg_integer(), map()) ::
-          {:reply, {:ok, list({ReporteMascota.t(), ReporteMascota.t(), non_neg_integer()})}, map()}
-  def ejecutar_emparejamiento(umbral, estado) do
-    lista = Map.values(estado.mascotas)
-    perdidas = Enum.filter(lista, fn m -> m.tipo_reporte == :perdida and m.estado == :activa end)
-    encontradas = Enum.filter(lista, fn m -> m.tipo_reporte == :encontrada and m.estado == :activa end)
-
-    coincidencias = SimilitudMascotas.emparejar_reportes(perdidas, encontradas, umbral)
-    {:reply, {:ok, coincidencias}, estado}
-  end
-
-  @doc """
-  Ejecutar la resolución del reporte impidiendo doble cierre.
-  """
-  @spec ejecutar_resolucion(String.t(), String.t(), map()) ::
-          {:reply, {:ok, ReporteMascota.t()} | {:error, atom()}, map()}
-  def ejecutar_resolucion(id_mascota, usuario, estado) do
-    clave = String.upcase(id_mascota)
-
-    case Map.get(estado.mascotas, clave) do
-      nil ->
-        {:reply, {:error, :mascota_no_encontrada}, estado}
-
-      %ReporteMascota{} = mascota ->
-        fecha = Reloj.obtener_fecha_actual()
-
-        case TransicionesEstado.transitar_mascota(mascota, :resuelta, usuario, fecha) do
-          {:ok, transitada} ->
-            MotorPersistencia.guardar(:mascotas, transitada)
-            nuevas = Map.put(estado.mascotas, clave, transitada)
-            {:reply, {:ok, transitada}, %{estado | mascotas: nuevas}}
-
-          {:error, razon} ->
-            {:reply, {:error, razon}, estado}
+  defp ejecutar_actualizacion(id, est, u, fecha, st) do
+    case Map.get(st, id) do
+      nil -> {:reply, {:error, :mascota_no_encontrada}, st}
+      m ->
+        case Estados.transitar(m, est, u, fecha) do
+          {:ok, m_act} ->
+            nuevo_st = Map.put(st, id, m_act)
+            AlmacenArchivo.guardar(:mascotas, Map.values(nuevo_st))
+            {:reply, {:ok, m_act}, nuevo_st}
+          error -> {:reply, error, st}
         end
     end
-  end
-
-  @doc """
-  Responder la lista de todas las mascotas registradas.
-  """
-  @spec responder_listado(map()) :: {:reply, {:ok, list(ReporteMascota.t())}, map()}
-  def responder_listado(estado) do
-    {:reply, {:ok, Map.values(estado.mascotas)}, estado}
   end
 end

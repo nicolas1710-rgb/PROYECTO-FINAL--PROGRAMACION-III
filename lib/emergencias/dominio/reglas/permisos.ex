@@ -1,77 +1,33 @@
 defmodule Emergencias.Dominio.Reglas.Permisos do
-  @moduledoc """
-  Matriz de control de acceso basada en roles (RBAC) utilizando MapSet para verificación O(1).
-  """
+  @moduledoc "Matriz de control de acceso RBAC basada en MapSet."
 
-  @operaciones_ciudadano MapSet.new([
-                           :registrar_necesidad,
-                           :listar_necesidades,
-                           :reportar_persona,
-                           :buscar_persona,
-                           :enviar_mensaje,
-                           :listar_mensajes,
-                           :reportar_mascota,
-                           :consultar_albergue,
-                           :listar_recursos
-                         ])
+  @permisos_ciudadano MapSet.new([
+    :registrar_necesidad, :listar_necesidades, :reportar_persona, :buscar_persona,
+    :enviar_mensaje, :listar_mensajes, :reportar_mascota, :listar_mascotas,
+    :consultar_albergue, :listar_albergues, :listar_recursos, :consultar_zona, :listar_zonas
+  ])
 
-  @operaciones_voluntario MapSet.union(
-                            @operaciones_ciudadano,
-                            MapSet.new([
-                              :registrar_recurso,
-                              :registrar_entrada_albergue,
-                              :registrar_salida_albergue
-                            ])
-                          )
+  @permisos_voluntario MapSet.union(@permisos_ciudadano, MapSet.new([
+    :registrar_recurso, :registrar_entrada_albergue, :registrar_salida_albergue, :actualizar_persona
+  ]))
 
-  @operaciones_coordinador MapSet.union(
-                             @operaciones_voluntario,
-                             MapSet.new([
-                               :registrar_zona,
-                               :registrar_albergue,
-                               :asignar_recurso,
-                               :transferir_recurso,
-                               :actualizar_necesidad,
-                               :actualizar_persona,
-                               :emparejar_mascotas,
-                               :resolver_mascota,
-                               :generar_resumen,
-                               :recursos_criticos,
-                               :necesidades_pendientes
-                             ])
-                           )
+  @permisos_coordinador MapSet.union(@permisos_voluntario, MapSet.new([
+    :asignar_recurso, :transferir_recurso, :registrar_zona, :registrar_sector,
+    :registrar_punto, :registrar_albergue, :emparejar_mascotas, :confirmar_coincidencia,
+    :actualizar_necesidad, :generar_resumen, :recursos_criticos, :necesidades_pendientes,
+    :vincular_albergue, :reporte_albergues
+  ]))
 
-  @matriz_permisos %{
-    ciudadano: @operaciones_ciudadano,
-    voluntario: @operaciones_voluntario,
-    coordinador: @operaciones_coordinador
+  @permisos_rol %{
+    ciudadano: @permisos_ciudadano,
+    voluntario: @permisos_voluntario,
+    coordinador: @permisos_coordinador,
+    administrador: @permisos_coordinador
   }
 
-  @doc """
-  Evaluar si un rol específico tiene permiso para ejecutar una operación.
-  El rol administrador posee permisos irrestrictos sobre cualquier operación.
-  """
-  @spec tener_permiso?(atom(), atom()) :: boolean()
-  def tener_permiso?(:administrador, _operacion), do: true
-
-  def tener_permiso?(rol, operacion) when is_atom(rol) and is_atom(operacion) do
-    @matriz_permisos
-    |> Map.get(rol, MapSet.new())
-    |> MapSet.member?(operacion)
-  end
-
-  def tener_permiso?(_, _), do: false
-
-  @doc """
-  Autorizar la ejecución de una operación según el rol provisto.
-  Retorna `:ok` o `{:error, :sin_permiso}`.
-  """
-  @spec autorizar(atom(), atom()) :: :ok | {:error, :sin_permiso}
-  def autorizar(rol, operacion) do
-    if tener_permiso?(rol, operacion) do
-      :ok
-    else
-      {:error, :sin_permiso}
-    end
+  @doc "Autorizar una accion segun el rol del usuario."
+  def autorizar(rol, accion) do
+    permitidos = Map.get(@permisos_rol, rol, MapSet.new())
+    if MapSet.member?(permitidos, accion), do: :ok, else: {:error, :no_autorizado}
   end
 end

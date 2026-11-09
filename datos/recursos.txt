@@ -1,2 +1,13 @@
-R001|agua|agua|litros|60|5|55|Z001|2026-11-09T03:48:14.922000Z
-R002|agua|agua|litros|10|10|0|Z002|2026-11-09T03:48:14.937000Z
+%% coding: utf-8
+#{id => <<"R001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Recurso',
+  cantidad_disponible => 5,nombre => <<"agua">>,
+  fecha_registro => <<"2026-11-09T18:00:15.848000Z">>,
+  categoria => <<"general">>,unidad_medida => <<"litros">>,
+  cantidad_reservada => 55,cantidad_total => 60,ubicacion => <<"Z001">>}.
+#{id => <<"R002">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Recurso',
+  cantidad_disponible => 10,nombre => <<"agua">>,
+  fecha_registro => <<"2026-11-09T18:00:15.857000Z">>,
+  categoria => <<"general">>,unidad_medida => <<"litros">>,
+  cantidad_reservada => 0,cantidad_total => 20,ubicacion => <<"Z002">>}.

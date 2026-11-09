@@ -1,6 +1,21 @@
-MOV001|R001|entrada|50|Ingreso Inicial|Z001|2026-11-09T03:48:14.922000Z|Laura
-MOV002|R002|entrada|20|Ingreso Inicial|Z002|2026-11-09T03:48:14.937000Z|Laura
-MOV003|R001|asignacion|30|Z001|Necesidad:N001|2026-11-09T03:48:15.041000Z|Laura
-MOV004|R002|transferencia_origen|10|Z002|Z001|2026-11-09T03:48:15.078000Z|Laura
-MOV005|R001|transferencia_destino|10|Z002|Z001|2026-11-09T03:48:15.078000Z|Laura
-MOV006|R001|asignacion|25|Z001|Necesidad:N002|2026-11-09T03:48:15.116000Z|Laura
+%% coding: utf-8
+#{id => <<"MOV004">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Movimiento',
+  tipo => asignacion,fecha => <<"2026-11-09T18:00:15.935000Z">>,
+  cantidad => 25,codigo_recurso => <<"R001">>,destino => <<"Necesidad:N002">>,
+  origen => <<"Z001">>,usuario => <<"Laura">>}.
+#{id => <<"MOV003">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Movimiento',
+  tipo => transferencia_destino,fecha => <<"2026-11-09T18:00:15.909000Z">>,
+  cantidad => 10,codigo_recurso => <<"R001">>,destino => <<"Z001">>,
+  origen => <<"Z002">>,usuario => <<"Laura">>}.
+#{id => <<"MOV002">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Movimiento',
+  tipo => transferencia_origen,fecha => <<"2026-11-09T18:00:15.909000Z">>,
+  cantidad => 10,codigo_recurso => <<"R002">>,destino => <<"Z001">>,
+  origen => <<"Z002">>,usuario => <<"Laura">>}.
+#{id => <<"MOV001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Movimiento',
+  tipo => asignacion,fecha => <<"2026-11-09T18:00:15.884000Z">>,
+  cantidad => 30,codigo_recurso => <<"R001">>,destino => <<"Necesidad:N001">>,
+  origen => <<"Z001">>,usuario => <<"Laura">>}.

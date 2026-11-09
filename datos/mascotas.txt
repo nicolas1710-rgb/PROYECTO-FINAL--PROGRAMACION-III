@@ -1,2 +1,17 @@
-MC002|encontrada|perro|Rocky|dorado|mediano|Z001||activa|Maria|2026-11-09T03:48:15.238000Z|
-MC001|perdida|perro|Rocky|dorado|mediano|Z001||activa|Pedro|2026-11-09T03:48:15.224000Z|
+%% coding: utf-8
+#{id => <<"MC001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
+  color => <<"dorado">>,nombre => <<"Rocky">>,
+  fecha_registro => <<"2026-11-09T18:00:16.062000Z">>,estado => resuelta,
+  especie => <<"perro">>,codigo_zona => <<"Z001">>,tipo_reporte => perdida,
+  historial =>
+      [{<<"2026-11-09T18:00:16.084000Z">>,activa,resuelta,<<"Laura">>}],
+  usuario => <<"Laura">>,caracteristicas => [],tamano => mediano}.
+#{id => <<"MC002">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
+  color => <<"dorado">>,nombre => <<"Rocky">>,
+  fecha_registro => <<"2026-11-09T18:00:16.072000Z">>,estado => resuelta,
+  especie => <<"perro">>,codigo_zona => <<"Z001">>,tipo_reporte => encontrada,
+  historial =>
+      [{<<"2026-11-09T18:00:16.084000Z">>,activa,resuelta,<<"Laura">>}],
+  usuario => <<"Laura">>,caracteristicas => [],tamano => mediano}.

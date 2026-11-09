@@ -1,1 +1,6 @@
-M001|10949001|Maria|Estamos todos bien en el refugio|2026-11-09T03:48:15.161000Z
+%% coding: utf-8
+#{id => <<"M001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mensaje',
+  fecha => <<"2026-11-09T18:00:15.970000Z">>,
+  documento_persona => <<"10949001">>,remitente => <<"Laura">>,
+  contenido => <<"Estamos a salvo en el punto de encuentro.">>}.

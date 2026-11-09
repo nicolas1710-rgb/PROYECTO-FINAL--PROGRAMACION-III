@@ -1,1 +1,1 @@
-Emergencias.Infraestructura.Entrada.Consola.iniciar()
+Emergencias.Infraestructura.Entrada.Consola.Consola.iniciar()

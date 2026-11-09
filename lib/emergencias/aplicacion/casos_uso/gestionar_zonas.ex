@@ -1,136 +1,70 @@
 defmodule Emergencias.Aplicacion.CasosUso.GestionarZonas do
-  @moduledoc """
-  Caso de uso para la administración y consulta de zonas territoriales de emergencia.
-  """
+  @moduledoc "Casos de uso para registro de zonas territoriales, sectores y puntos."
 
-  @behaviour Emergencias.Aplicacion.Puertos.Entrada.PuertoZonas
+  alias Emergencias.Dominio.Modelos.Usuario
+  alias Emergencias.Dominio.Reglas.{JerarquiaZona, Permisos, Validaciones}
 
-  alias Emergencias.Aplicacion.Puertos.Salida.{GeneradorId, Reloj}
-  alias Emergencias.Dominio.Modelos.{Usuario, Zona}
-  alias Emergencias.Dominio.Reglas.{Permisos, Validaciones}
-
-  @impl true
-  @doc """
-  Registrar una nueva zona en el sistema previa autorización y validación.
-  """
-  @spec registrar_zona(map(), Usuario.t(), keyword()) :: {:ok, Zona.t()} | {:error, atom()}
-  def registrar_zona(params, %Usuario{} = usuario, opciones \\ []) do
-    with :ok <- Permisos.autorizar(usuario.rol, :registrar_zona) do
-      puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
-      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
-      reloj = Keyword.get(opciones, :reloj, Reloj)
-      fecha = reloj.obtener_fecha_actual()
-
-      cond do
-        puerto_zonas != nil and function_exported?(puerto_zonas, :registrar, 2) ->
-          case puerto_zonas.registrar(params, usuario.nombre) do
-            {:ok, zona} ->
-              notificar_bitacora(puerto_bitacora, usuario.nombre, "registrar_zona", "Zona #{zona.id} creada", fecha)
-              {:ok, zona}
-
-            error ->
-              error
-          end
-
-        true ->
-          ejecutar_registro_directo(params, usuario, opciones)
-      end
+  @doc "Registrar una nueva zona en el sistema."
+  def registrar_zona(cod, nom, nivel_str, personas, %Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :registrar_zona),
+         {:ok, c} <- Validaciones.validar_no_vacio(cod),
+         {:ok, n} <- Validaciones.validar_no_vacio(nom),
+         {:ok, nivel} <- Validaciones.validar_nivel_gravedad(nivel_str),
+         {:ok, p} <- Validaciones.validar_no_negativo(personas) do
+      puerto = resolver_puerto(opts, :puerto_zonas)
+      puerto.registrar_zona(%{id: c, nombre: n, nivel_gravedad: nivel, personas_afectadas: p})
     end
   end
 
-  @impl true
-  @doc """
-  Consultar una zona específica por su código identificador.
-  """
-  @spec consultar_zona(String.t(), Usuario.t(), keyword()) :: {:ok, Zona.t()} | {:error, atom()}
-  def consultar_zona(id_zona, %Usuario{}, opciones \\ []) do
-    puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
-
-    cond do
-      puerto_zonas != nil and function_exported?(puerto_zonas, :consultar, 1) ->
-        puerto_zonas.consultar(id_zona)
-
-      true ->
-        repositorio = Keyword.get(opciones, :repositorio)
-
-        case cargar_zonas(repositorio) do
-          {:ok, lista} ->
-            encontrada = Enum.find(lista, fn z -> String.upcase(z.id) == String.upcase(id_zona) end)
-            if encontrada, do: {:ok, encontrada}, else: {:error, :zona_no_encontrada}
-
-          _ ->
-            {:error, :zona_no_encontrada}
-        end
+  @doc "Registrar un sector barrial dentro de una zona."
+  def registrar_sector(z_id, s_cod, nom, personas, %Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :registrar_sector),
+         {:ok, c} <- Validaciones.validar_no_vacio(s_cod),
+         {:ok, n} <- Validaciones.validar_no_vacio(nom),
+         {:ok, p} <- Validaciones.validar_no_negativo(personas) do
+      puerto = resolver_puerto(opts, :puerto_zonas)
+      puerto.registrar_sector(z_id, %{id: c, nombre: n, personas_afectadas: p})
     end
   end
 
-  @impl true
-  @doc """
-  Listar todas las zonas registradas en el sistema.
-  """
-  @spec listar_zonas(Usuario.t(), keyword()) :: {:ok, list(Zona.t())} | {:error, atom()}
-  def listar_zonas(%Usuario{}, opciones \\ []) do
-    puerto_zonas = resolver_puerto(opciones, :puerto_zonas, :puerto_zonas)
-
-    cond do
-      puerto_zonas != nil and function_exported?(puerto_zonas, :listar, 0) ->
-        puerto_zonas.listar()
-
-      true ->
-        repositorio = Keyword.get(opciones, :repositorio)
-        cargar_zonas(repositorio)
+  @doc "Registrar un punto de atencion dentro de un sector."
+  def registrar_punto(z_id, s_id, p_cod, nom, personas, %Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :registrar_punto),
+         {:ok, c} <- Validaciones.validar_no_vacio(p_cod),
+         {:ok, n} <- Validaciones.validar_no_vacio(nom),
+         {:ok, p} <- Validaciones.validar_no_negativo(personas) do
+      puerto = resolver_puerto(opts, :puerto_zonas)
+      puerto.registrar_punto(z_id, s_id, %{id: c, nombre: n, personas_afectadas: p})
     end
   end
 
-  defp resolver_puerto(opciones, clave, config_key) do
-    cond do
-      Keyword.has_key?(opciones, clave) -> Keyword.get(opciones, clave)
-      Keyword.has_key?(opciones, :repositorio) -> nil
-      true -> Application.get_env(:emergencias, config_key)
+  @doc "Consultar los datos de una zona especifica."
+  def consultar_zona(id, %Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :consultar_zona) do
+      puerto = resolver_puerto(opts, :puerto_zonas)
+      puerto.consultar(id)
     end
   end
 
-  defp ejecutar_registro_directo(params, usuario, opciones) do
-    with {:ok, datos_validados} <- Validaciones.validar_entrada_zona(params) do
-      repositorio = Keyword.get(opciones, :repositorio)
-      puerto_bitacora = resolver_puerto(opciones, :bitacora, :puerto_bitacora)
-      reloj = Keyword.get(opciones, :reloj, Reloj)
-      fecha = reloj.obtener_fecha_actual()
-
-      {:ok, existentes} = cargar_zonas(repositorio)
-      nuevo_id = GeneradorId.formatear_id(:zona, length(existentes) + 1)
-
-      {:ok, nueva_zona} =
-        Zona.construir(%{
-          id: nuevo_id,
-          nombre: datos_validados.nombre,
-          nivel_gravedad: datos_validados.nivel_gravedad,
-          fecha_registro: fecha,
-          sectores: Map.get(params, :sectores, [])
-        })
-
-      guardar_zona(repositorio, nueva_zona)
-      notificar_bitacora(puerto_bitacora, usuario.nombre, "registrar_zona", "Zona #{nuevo_id} creada", fecha)
-      {:ok, nueva_zona}
+  @doc "Listar todas las zonas registradas."
+  def listar_zonas(%Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :listar_zonas) do
+      puerto = resolver_puerto(opts, :puerto_zonas)
+      {:ok, puerto.listar()}
     end
   end
 
-  defp cargar_zonas(nil), do: {:ok, []}
-  defp cargar_zonas(repo) do
-    if function_exported?(repo, :cargar, 1), do: repo.cargar(:zonas), else: {:ok, []}
-  end
-
-  defp guardar_zona(nil, _zona), do: :ok
-  defp guardar_zona(repo, zona) do
-    if function_exported?(repo, :guardar, 2), do: repo.guardar(:zonas, zona), else: :ok
-  end
-
-  defp notificar_bitacora(nil, _u, _a, _d, _f), do: :ok
-  defp notificar_bitacora(bitacora, u, a, d, f) do
-    if is_atom(bitacora) and function_exported?(bitacora, :registrar_actividad, 4) do
-      bitacora.registrar_actividad(u, a, d, f)
-    else
-      :ok
+  @doc "Calcular estado territorial recursivo: total de sectores, puntos y personas afectadas."
+  def consultar_estado_zona(id, %Usuario{} = u, opts \\ []) do
+    with :ok <- Permisos.autorizar(u.rol, :consultar_zona),
+         {:ok, zona} <- consultar_zona(id, u, opts) do
+      puntos_total = JerarquiaZona.contar_puntos_atencion(zona)
+      personas_total = JerarquiaZona.sumar_personas_afectadas(zona)
+      {:ok, %{zona: zona, total_sectores: length(zona.sectores), total_puntos: puntos_total, total_personas: personas_total}}
     end
+  end
+
+  defp resolver_puerto(opts, clave) do
+    Keyword.get(opts, clave, Application.get_env(:emergencias, clave))
   end
 end

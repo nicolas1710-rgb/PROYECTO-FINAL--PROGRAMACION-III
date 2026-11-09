@@ -1,60 +1,49 @@
 sequenceDiagram
     autonumber
-    %% FLUJO CONCURRENTE Y ATÓMICO: ASIGNACIÓN DE RECURSOS A NECESIDADES
+    %% FLUJO CONCURRENTE Y ATOMICO: ASIGNACION EN GESTORLOGISTICA
 
     actor Laura as Coordinadora (Laura)
     actor Carlos as Coordinador Auxiliar (Carlos)
-    participant Desp as DespachadorComandos
-    participant CU as GestionarRecursos (Caso de Uso)
-    participant PS_Nec as PuertoSalidaNecesidades (GestorNecesidades)
-    participant PS_Rec as PuertoSalidaRecursos (GestorRecursos OTP)
-    participant Reglas as Inventario / Transiciones (Dominio Puro)
-    participant MP as MotorPersistencia (GenServer Escritura)
+    participant Desp as Despachador
+    participant CU as GestionarLogistica (Caso de Uso)
+    participant GLog as GestorLogistica (GenServer FIFO)
+    participant Asig as Asignacion (Dominio Puro)
+    participant Archivo as AlmacenArchivo (.txt)
 
-    Note over PS_Rec: Estado Inicial: R001 tiene 50 L disponibles en inventario
-    Note over PS_Nec: Estado Inicial: N001 pide 30 L (pendiente), N002 pide 25 L (pendiente)
+    Note over GLog: Estado Inicial: R001 (50 L disponibles)<br/>N001 pide 30 L (pendiente)<br/>N002 pide 25 L (pendiente)
 
     par Solicitudes Concurrentes (Task.async_stream)
         Laura->>Desp: assign_resource("R001", "N001", 30)
         Desp->>CU: asignar_recurso("R001", "N001", 30, Laura)
+        CU->>GLog: asignar("R001", "N001", 30, "Laura")
     and
         Carlos->>Desp: assign_resource("R001", "N002", 25)
         Desp->>CU: asignar_recurso("R001", "N002", 25, Carlos)
+        CU->>GLog: asignar("R001", "N002", 25, "Carlos")
     end
 
-    Note over CU, PS_Nec: 1. Validación de Necesidad: abierta y cantidad no excede lo pendiente
-    CU->>PS_Nec: consultar("N001")
-    PS_Nec-->>CU: {:ok, N001_pendiente_30}
+    Note over GLog: El buzon FIFO serializa las solicitudes.<br/>Laura se atiende primero.
 
-    Note over PS_Rec: El buzón de mensajes del GenServer serializa el acceso al stock
-
-    %% Tramitación de la petición de Laura (30 L)
+    %% Tramitacion de la peticion de Laura (30 L)
     rect rgb(240, 255, 240)
-        Note over CU, PS_Rec: 2. Descuento atómico de Stock para Laura (30 L)
-        CU->>PS_Rec: asignar("R001", "N001", 30, Laura)
-        PS_Rec->>Reglas: Inventario.asignar(R001, 30, ...)
-        Reglas-->>PS_Rec: {:ok, {R001_disp_20, MOV001}}
-        PS_Rec->>MP: guardar(:recursos, R001_disp_20)
-        PS_Rec->>MP: anexar(:movimientos, MOV001)
-        PS_Rec-->>CU: {:ok, {R001_disp_20, MOV001}}
-
-        Note over CU, PS_Nec: 3. Actualización de Necesidad N001 (cantidad_asignada = 30 -> :atendida)
-        CU->>PS_Nec: asignar_suministro("N001", 30, Laura)
-        PS_Nec-->>CU: {:ok, N001_atendida}
-        CU-->>Desp: {:ok, R001_actualizado}
-        Desp-->>Laura: [OK] Asignados 30 litros de [R001] a [N001]. Stock restante: 20
+        Note over GLog, Asig: 1. Ejecucion atomica de Asignacion.asignar/6
+        GLog->>Asig: asignar(recursos, necesidades, "R001", "N001", 30, "Laura")
+        Note over Asig: Valida necesidad (abierta, saldo pendiente 30 >= 30)<br/>Valida stock recurso (50 >= 30)<br/>Actualiza N001 a :atendida y R001 a 20 L disp.
+        Asig-->>GLog: {:ok, {nuevo_r, nuevo_n, mov, nuevo_estado}}
+        GLog->>Archivo: persistir(:recursos, :necesidades, :movimientos)
+        GLog-->>CU: {:ok, {nuevo_r, nuevo_n, mov}}
+        CU-->>Desp: {:ok, {nuevo_r, nuevo_n, mov}}
+        Desp-->>Laura: [EXITO] Asignados 30 de [R001] a [N001]. Stock restante: 20.
     end
 
-    %% Tramitación concurrente de la petición de Carlos (25 L)
+    %% Tramitacion concurrente de la peticion de Carlos (25 L)
     rect rgb(255, 240, 240)
-        Note over CU, PS_Rec: 4. Descuento atómico de Stock para Carlos (25 L)
-        CU->>PS_Nec: consultar("N002")
-        PS_Nec-->>CU: {:ok, N002_pendiente_25}
-        CU->>PS_Rec: asignar("R001", "N002", 25, Carlos)
-        PS_Rec->>Reglas: Inventario.asignar(R001, 25, ...)
-        Note over Reglas: Validación de Saldo: disponible (20) < solicitado (25)
-        Reglas-->>PS_Rec: {:error, :stock_insuficiente}
-        PS_Rec-->>CU: {:error, :stock_insuficiente}
+        Note over GLog, Asig: 2. Siguiente mensaje en buzon FIFO: Peticion de Carlos
+        GLog->>Asig: asignar(recursos, necesidades, "R001", "N002", 25, "Carlos")
+        Note over Asig: Stock disponible en R001 es 20 L < 25 L solicitados
+        Asig-->>GLog: {:error, :stock_insuficiente}
+        Note over GLog: El estado no se muta (cero rollback, cero compensacion)
+        GLog-->>CU: {:error, :stock_insuficiente}
         CU-->>Desp: {:error, :stock_insuficiente}
         Desp-->>Carlos: [ERROR] Existencias insuficientes en inventario para atender la solicitud.
     end

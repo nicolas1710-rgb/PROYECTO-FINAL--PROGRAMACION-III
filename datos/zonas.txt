@@ -1,2 +1,16 @@
-Z002|Norte|medio|2026-11-09T03:48:14.845000Z|
-Z001|Centro|critico|2026-11-09T03:48:14.822000Z|
+%% coding: utf-8
+#{id => <<"Z001">>,'__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Zona',
+  nombre => <<"Centro">>,fecha_registro => <<"2026-11-09T18:00:15.810000Z">>,
+  sectores =>
+      [#{id => <<"S001">>,
+         '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Sector',
+         nombre => <<"Comercial">>,personas_afectadas => 30,
+         puntos_atencion =>
+             [#{id => <<"PT01">>,
+                '__struct__' =>
+                    'Elixir.Emergencias.Dominio.Modelos.PuntoAtencion',
+                nombre => <<"Puesto Salud">>,personas_afectadas => 15}]}],
+  personas_afectadas => 50,nivel_gravedad => critico}.
+#{id => <<"Z002">>,'__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Zona',
+  nombre => <<"Norte">>,fecha_registro => <<"2026-11-09T18:00:15.817000Z">>,
+  sectores => [],personas_afectadas => 20,nivel_gravedad => medio}.

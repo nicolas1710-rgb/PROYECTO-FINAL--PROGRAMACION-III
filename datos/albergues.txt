@@ -1,1 +1,10 @@
-ALB001|Estadio San Jose|Z001|2|2026-11-09T03:48:14.899000Z|10949001;10949002||
+%% coding: utf-8
+#{id => <<"ALB001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Albergue',
+  nombre => <<"Estadio San Jose">>,
+  fecha_registro => <<"2026-11-09T18:00:15.985000Z">>,capacidad_maxima => 2,
+  codigo_zona => <<"Z001">>,
+  personas_alojadas =>
+      #{map => #{<<"10949001">> => [],<<"10949002">> => []},
+        '__struct__' => 'Elixir.MapSet'},
+  recursos_asignados => #{},necesidades_asociadas => []}.

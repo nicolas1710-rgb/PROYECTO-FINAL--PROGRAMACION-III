@@ -1,3 +1,7 @@
-U003|Maria|ciudadano|6d4c954c3c6f2447ccdea9eb063c68eccd64716876e4cb1dce7bc26063de746b|2026-11-09T03:48:15.006000Z
-U002|Pedro|ciudadano|0f7311e69adead8b2ef2d8af1f5a3785713df6635e026ae3a21541a49ca09147|2026-11-09T03:48:14.973000Z
-U001|Laura|coordinador|d04f8279086457ddf58216bd15a5406cb3ee2cc29c31bbe51643a8a04651bc3e|2026-11-09T03:48:14.754000Z
+%% coding: utf-8
+#{id => <<"U001">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Usuario',
+  nombre => <<"Laura">>,rol => coordinador,
+  clave_hash =>
+      <<"d04f8279086457ddf58216bd15a5406cb3ee2cc29c31bbe51643a8a04651bc3e">>,
+  fecha_registro => <<"2026-11-09T18:00:15.787000Z">>}.

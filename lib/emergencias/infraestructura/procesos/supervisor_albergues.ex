@@ -1,64 +1,78 @@
 defmodule Emergencias.Infraestructura.Procesos.SupervisorAlbergues do
-  @moduledoc """
-  DynamicSupervisor para orquestar los procesos concurrentes de albergues.
-  """
-
+  @moduledoc "DynamicSupervisor para procesos concurrentes de albergues y puerto de salida."
   use DynamicSupervisor
+  @behaviour Emergencias.Aplicacion.Puertos.Salida.PuertoAlbergues
 
   alias Emergencias.Dominio.Modelos.Albergue
+  alias Emergencias.Dominio.Reglas.Identificadores
   alias Emergencias.Infraestructura.Procesos.Albergue, as: ProcesoAlbergue
+  alias Emergencias.Infraestructura.Salida.AlmacenArchivo
 
-  @doc """
-  Iniciar el supervisor dinámico de albergues.
-  """
-  @spec iniciar(keyword()) :: {:ok, pid()} | {:error, any()}
-  def iniciar(opciones \\ []) do
-    DynamicSupervisor.start_link(__MODULE__, opciones, name: __MODULE__)
-  end
+  @registro Emergencias.RegistroAlbergues
 
-  @doc """
-  Callback exigido por OTP; delega a iniciar/1.
-  """
-  def start_link(opciones \\ []), do: iniciar(opciones)
+  def iniciar(opts \\ []), do: DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts \\ []), do: iniciar(opts)
+  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :iniciar, [opts]}, type: :supervisor}
 
-  @doc """
-  Especificación de supervisión OTP; delega a definir_especificacion/1.
-  """
-  def child_spec(opciones), do: definir_especificacion(opciones)
+  @impl true
+  def init(_opts), do: DynamicSupervisor.init(strategy: :one_for_one)
 
-  @doc """
-  Definir la especificación de supervisión para el supervisor dinámico de albergues.
-  """
-  @spec definir_especificacion(keyword()) :: map()
-  def definir_especificacion(opciones) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :iniciar, [opciones]},
-      type: :supervisor,
-      restart: :permanent,
-      shutdown: 5000
-    }
-  end
-
-  @doc """
-  Lanzar un proceso concurrente para un albergue bajo la supervisión dinámica.
-  """
-  @spec iniciar_albergue(Albergue.t()) :: {:ok, pid()} | {:error, any()}
-  def iniciar_albergue(%Albergue{} = albergue) do
-    especificacion = {ProcesoAlbergue, albergue}
-    DynamicSupervisor.start_child(__MODULE__, especificacion)
+  @impl true
+  def registrar(p) do
+    existentes = AlmacenArchivo.cargar(:albergues)
+    id = Map.get(p, :id) || Identificadores.generar("ALB", length(existentes))
+    fecha = DateTime.utc_now() |> DateTime.to_iso8601()
+    {:ok, alb} = Albergue.construir(Map.merge(p, %{id: id, fecha_registro: fecha}))
+    nuevos = [alb | Enum.reject(existentes, &(&1.id == id))]
+    AlmacenArchivo.guardar(:albergues, nuevos)
+    DynamicSupervisor.start_child(__MODULE__, {ProcesoAlbergue, alb})
+    {:ok, alb}
   end
 
   @impl true
-  def init(opciones) do
-    inicializar_supervisor(opciones)
+  def consultar(id), do: pedir_al_proceso(id, :consultar)
+  @impl true
+  def ingresar(id, doc), do: pedir_al_proceso(id, {:ingresar, doc})
+  @impl true
+  def salir(id, doc), do: pedir_al_proceso(id, {:salir, doc})
+  @impl true
+  def vincular_recurso(id, r_id), do: pedir_al_proceso(id, {:vincular_recurso, r_id})
+  @impl true
+  def vincular_necesidad(id, n_id), do: pedir_al_proceso(id, {:vincular_necesidad, n_id})
+
+  @impl true
+  def listar do
+    AlmacenArchivo.cargar(:albergues)
+    |> Enum.map(fn a ->
+      case consultar(a.id) do
+        {:ok, en_vivo} -> en_vivo
+        _ -> a
+      end
+    end)
   end
 
-  @doc """
-  Inicializar la estrategia de supervisión dinámica :one_for_one.
-  """
-  @spec inicializar_supervisor(keyword()) :: {:ok, map()}
-  def inicializar_supervisor(_opciones) do
-    DynamicSupervisor.init(strategy: :one_for_one)
+  @doc "Actualizar el albergue persistido en disco al cambiar su ocupacion o vinculos."
+  def actualizar_en_memoria(%Albergue{} = alb) do
+    existentes = AlmacenArchivo.cargar(:albergues)
+    nuevos = [alb | Enum.reject(existentes, &(&1.id == alb.id))]
+    AlmacenArchivo.guardar(:albergues, nuevos)
+  end
+
+  defp pedir_al_proceso(id, peticion) do
+    case Registry.lookup(@registro, id) do
+      [{pid, _}] ->
+        msg = case peticion do
+          :consultar -> {:consultar, self()}
+          {tipo, arg} -> {tipo, arg, self()}
+        end
+        send(pid, msg)
+        receive do
+          {:ok, resp} -> {:ok, resp}
+          {:error, razon} -> {:error, razon}
+        after
+          1000 -> {:error, :tiempo_espera_agotado}
+        end
+      [] -> {:error, :albergue_no_encontrado}
+    end
   end
 end
