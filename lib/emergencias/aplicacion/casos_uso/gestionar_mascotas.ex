@@ -51,6 +51,36 @@ defmodule Emergencias.Aplicacion.CasosUso.GestionarMascotas do
     end
   end
 
+  @doc "Actualizar estado de mascota solo por el usuario creador o un coordinador."
+  def actualizar_estado_mascota(id, nuevo_estado_val, %Usuario{} = u, opts \\ []) do
+    puerto = resolver_puerto(opts, :puerto_mascotas)
+    with {:ok, m} <- puerto.consultar(id),
+         :ok <- validar_autorizacion_modificacion(m, u),
+         {:ok, nuevo_est} <- validar_estado_mascota(nuevo_estado_val) do
+      fecha = DateTime.utc_now() |> DateTime.to_iso8601()
+      puerto.actualizar_estado(id, nuevo_est, u.nombre, fecha)
+    end
+  end
+
+  defp validar_autorizacion_modificacion(m, u) do
+    if u.rol in [:coordinador, :administrador] or m.usuario == u.nombre do
+      :ok
+    else
+      {:error, :no_autorizado}
+    end
+  end
+
+  defp validar_estado_mascota(est) when is_atom(est), do: {:ok, est}
+  defp validar_estado_mascota(est) when is_binary(est) do
+    case String.downcase(String.trim(est)) do
+      "activa" -> {:ok, :activa}
+      "posible_coincidencia" -> {:ok, :posible_coincidencia}
+      "resuelta" -> {:ok, :resuelta}
+      _ -> {:error, :transicion_invalida}
+    end
+  end
+  defp validar_estado_mascota(_), do: {:error, :transicion_invalida}
+
   defp resolver_puerto(opts, clave) do
     Keyword.get(opts, clave, Application.get_env(:emergencias, clave))
   end

@@ -1,17 +1,36 @@
 %% coding: utf-8
 #{id => <<"MC001">>,
   '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
-  color => <<"dorado">>,nombre => <<"Rocky">>,
-  fecha_registro => <<"2026-11-09T18:00:16.062000Z">>,estado => resuelta,
-  especie => <<"perro">>,codigo_zona => <<"Z001">>,tipo_reporte => perdida,
+  color => <<"dorado">>,fecha_registro => <<"2026-11-09T18:00:16.062000Z">>,
+  nombre => <<"Rocky">>,estado => resuelta,codigo_zona => <<"Z001">>,
   historial =>
       [{<<"2026-11-09T18:00:16.084000Z">>,activa,resuelta,<<"Laura">>}],
-  usuario => <<"Laura">>,caracteristicas => [],tamano => mediano}.
+  usuario => <<"Laura">>,especie => <<"perro">>,tipo_reporte => perdida,
+  caracteristicas => [],tamano => mediano}.
 #{id => <<"MC002">>,
   '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
-  color => <<"dorado">>,nombre => <<"Rocky">>,
-  fecha_registro => <<"2026-11-09T18:00:16.072000Z">>,estado => resuelta,
-  especie => <<"perro">>,codigo_zona => <<"Z001">>,tipo_reporte => encontrada,
+  color => <<"dorado">>,fecha_registro => <<"2026-11-09T18:00:16.072000Z">>,
+  nombre => <<"Rocky">>,estado => resuelta,codigo_zona => <<"Z001">>,
   historial =>
       [{<<"2026-11-09T18:00:16.084000Z">>,activa,resuelta,<<"Laura">>}],
-  usuario => <<"Laura">>,caracteristicas => [],tamano => mediano}.
+  usuario => <<"Laura">>,especie => <<"perro">>,tipo_reporte => encontrada,
+  caracteristicas => [],tamano => mediano}.
+#{id => <<"MC003">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
+  color => <<"verde">>,fecha_registro => <<"2026-11-10T17:24:00.892000Z">>,
+  nombre => <<"pepito">>,estado => resuelta,codigo_zona => <<"Z001">>,
+  historial =>
+      [{<<"2026-11-10T17:32:34.095000Z">>,activa,resuelta,<<"pepe2">>}],
+  usuario => <<"pepe2">>,especie => <<"cocodrilo">>,tipo_reporte => perdida,
+  caracteristicas => [],tamano => grande}.
+#{id => <<"MC004">>,
+  '__struct__' => 'Elixir.Emergencias.Dominio.Modelos.Mascota',
+  color => <<"verde">>,fecha_registro => <<"2026-11-10T17:25:06.395000Z">>,
+  nombre => <<"pepito">>,estado => resuelta,codigo_zona => <<"Z001">>,
+  historial =>
+      [{<<"2026-11-10T17:32:42.650000Z">>,posible_coincidencia,resuelta,
+        <<"pepe2">>},
+       {<<"2026-11-10T17:32:39.671000Z">>,activa,posible_coincidencia,
+        <<"pepe2">>}],
+  usuario => <<"pepe2">>,especie => <<"cocodrilo">>,
+  tipo_reporte => encontrada,caracteristicas => [],tamano => grande}.

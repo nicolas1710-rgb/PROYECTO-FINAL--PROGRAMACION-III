@@ -8,8 +8,12 @@ defmodule Emergencias.Procesos.ConcurrenciaTest do
     Application.put_env(:emergencias, :directorio_datos, dir)
     File.mkdir_p!(dir)
 
-    if Process.whereis(Emergencias.SupervisorRaiz) do
-      Supervisor.stop(Emergencias.SupervisorRaiz)
+    if pid = Process.whereis(Emergencias.SupervisorRaiz) do
+      try do
+        Supervisor.stop(pid)
+      catch
+        :exit, _ -> :ok
+      end
       Process.sleep(30)
     end
     {:ok, _} = Emergencias.Application.iniciar_supervision()

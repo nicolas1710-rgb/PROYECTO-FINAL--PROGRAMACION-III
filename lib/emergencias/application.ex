@@ -30,7 +30,9 @@ defmodule Emergencias.Application do
       {GestorPersonas, []},
       {GestorMascotas, []},
       {SupervisorAlbergues, []},
-      {Task.Supervisor, name: Emergencias.TaskSupervisor}
+      {Task.Supervisor, name: Emergencias.TaskSupervisor},
+      {Phoenix.PubSub, name: Emergencias.PubSub},
+      EmergenciasWeb.Endpoint
     ]
 
     opts = [strategy: :one_for_one, max_restarts: 3, max_seconds: 5, name: Emergencias.SupervisorRaiz]

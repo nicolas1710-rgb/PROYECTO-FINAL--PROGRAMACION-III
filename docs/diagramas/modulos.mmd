@@ -1,10 +1,19 @@
 flowchart TD
     %% ARQUITECTURA HEXAGONAL ESTRICTA DEL SISTEMA DE EMERGENCIAS
-    subgraph Infraestructura_Entrada["INFRAESTRUCTURA - ENTRADA CONSOLA"]
-        Consola["Consola CLI (priv/main.exs)"]
-        Analizador["Analizador"]
-        Despachador["Despachador"]
-        Presentador["Presentador"]
+    subgraph Adaptadores_Entrada["INFRAESTRUCTURA - ADAPTADORES DE ENTRADA"]
+        subgraph Entrada_Consola["Entrada Consola CLI"]
+            Consola["Consola CLI (priv/main.exs)"]
+            Analizador["Analizador"]
+            Despachador["Despachador"]
+            Presentador["Presentador"]
+        end
+
+        subgraph Entrada_Web["Entrada Web (Phoenix LiveView)"]
+            Endpoint["Endpoint & Router"]
+            SesionCtrl["SesionController"]
+            LiveViews["LiveViews (Resumen, Logistica, Zonas, Familiares, Mascotas, Albergues)"]
+            NotifWeb["Notificador (difunde tras éxito)"]
+        end
     end
 
     subgraph Aplicacion_Capa["APLICACION - CASOS DE USO Y PUERTOS"]
@@ -53,7 +62,7 @@ flowchart TD
     end
 
     subgraph Infraestructura_Salida["INFRAESTRUCTURA - PROCESOS OTP Y PERSISTENCIA"]
-        subgraph Concurrencia_OTP["Procesos OTP"]
+        subgraph Concurrencia_OTP["Procesos OTP y Mensajería"]
             G_Usr["GestorUsuarios\n(implementa PuertoUsuarios)"]
             G_Zon["GestorZonas\n(implementa PuertoZonas)"]
             G_Log["GestorLogistica\n(implementa PuertoLogistica)"]
@@ -62,6 +71,7 @@ flowchart TD
             Sup_Alb["SupervisorAlbergues\n(implementa PuertoAlbergues)"]
             P_Alb["Albergue\n(bucle receive puro)"]
             P_Bit["Bitacora\n(bucle receive puro)"]
+            PubSub["Emergencias.PubSub"]
         end
 
         subgraph Persistencia_Archivos["Persistencia (.txt)"]
@@ -69,15 +79,25 @@ flowchart TD
         end
     end
 
-    %% Relaciones entre capas (Hacia adentro estrictamente)
+    %% Relaciones Entrada -> Aplicación (Hacia adentro)
     Consola --> Analizador
     Analizador --> Despachador
     Despachador --> Casos_Uso
     Despachador --> Presentador
 
+    Endpoint --> SesionCtrl
+    Endpoint --> LiveViews
+    SesionCtrl --> CU_Usr
+    LiveViews --> Casos_Uso
+    LiveViews --> NotifWeb
+    NotifWeb -. difunde .-> PubSub
+    PubSub -. notifica {:cambio, tema} .-> LiveViews
+
+    %% Relaciones Aplicación -> Dominio y Puertos
     Casos_Uso --> Dominio_Nucleo
     Casos_Uso --> Puertos_Salida
 
+    %% Implementación de Puertos
     G_Usr -. implementa .-> PS_Usr
     G_Zon -. implementa .-> PS_Zon
     G_Log -. implementa .-> PS_Log
